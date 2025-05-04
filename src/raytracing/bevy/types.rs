@@ -2,7 +2,7 @@ use crate::boxtree::{types::PaletteIndexValues, BoxTree, V3cf32, VoxelData};
 use bevy::{
     asset::Handle,
     ecs::system::Resource,
-    math::Vec4,
+    math::{UVec2, Vec4},
     prelude::Image,
     reflect::TypePath,
     render::{
@@ -94,11 +94,21 @@ pub struct VhxViewSet {
 }
 
 /// The Camera responsible for storing frustum and view related data
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BoxTreeSpyGlass {
+    // The texture used to store depth information in the scene
+    pub(crate) depth_texture: Handle<Image>,
+
+    /// The currently used output texture
     pub(crate) output_texture: Handle<Image>,
+
+    // Set to true, if the viewport changed
     pub(crate) viewport_changed: bool,
+
+    // The viewport containing display information
     pub(crate) viewport: Viewport,
+
+    // The nodes requested by the raytracing algorithm to be displayed
     pub(crate) node_requests: Vec<u32>,
 }
 
@@ -110,6 +120,9 @@ pub struct BoxTreeGPUView {
 
     /// Set to true if the view needs to be reloaded
     pub(crate) reload: bool,
+
+    /// Set to true if the view needs to be refreshed, e.g. by a resolution change
+    pub(crate) rebuild: bool,
 
     /// True if the initial data already sent to GPU
     pub init_data_sent: bool,
@@ -123,11 +136,11 @@ pub struct BoxTreeGPUView {
     /// The currently used resolution the raycasting dimensions are based for the base ray
     pub(crate) resolution: [u32; 2],
 
-    /// The currently used output texture
-    pub(crate) output_texture: Handle<Image>,
-
-    /// The new resolution to be set ASAP if any
+    /// The new resolution to be set if any
     pub(crate) new_resolution: Option<[u32; 2]>,
+
+    /// The new depth texture to be used, if any
+    pub(crate) new_depth_texture: Option<Handle<Image>>,
 
     /// The new output texture to be used, if any
     pub(crate) new_output_texture: Option<Handle<Image>>,
@@ -161,6 +174,9 @@ pub struct BoxTreeGPUDataHandler {
 
 #[derive(Clone)]
 pub(crate) struct BoxTreeRenderDataResources {
+    pub(crate) render_stage_prepass_bind_group: BindGroup,
+    pub(crate) render_stage_main_bind_group: BindGroup,
+
     // Spyglass group
     // --{
     pub(crate) spyglass_bind_group: BindGroup,
@@ -280,11 +296,21 @@ pub struct BoxTreeRenderData {
     pub(crate) color_palette: Vec<Vec4>,
 }
 
+pub(crate) const VHX_PREPASS_STAGE_ID: u32 = 01;
+pub(crate) const VHX_RENDER_STAGE_ID: u32 = 02;
+
+#[derive(Debug, Clone, Copy, ShaderType)]
+pub(crate) struct RenderStageData {
+    pub(crate) stage: u32,
+    pub(crate) output_resolution: UVec2,
+}
+
 #[derive(Resource)]
 pub(crate) struct VhxRenderPipeline {
     pub update_tree: bool,
     pub(crate) render_queue: RenderQueue,
     pub(crate) update_pipeline: CachedComputePipelineId,
+    pub(crate) render_stage_bind_group_layout: BindGroupLayout,
     pub(crate) spyglass_bind_group_layout: BindGroupLayout,
     pub(crate) render_data_bind_group_layout: BindGroupLayout,
 }

@@ -5,7 +5,7 @@ use crate::{
     },
     object_pool::empty_marker,
     raytracing::bevy::{
-        create_output_texture,
+        create_depth_texture, create_output_texture,
         types::{
             BoxTreeGPUDataHandler, BoxTreeGPUHost, BoxTreeGPUView, BoxTreeMetaData,
             BoxTreeRenderData, BoxTreeSpyGlass, BrickUpdate, VhxRenderPipeline, VhxViewSet,
@@ -144,14 +144,16 @@ impl<
         let output_texture = create_output_texture(resolution, &mut images);
         vhx_view_set.views.push(Arc::new(Mutex::new(BoxTreeGPUView {
             resolution,
-            output_texture: output_texture.clone(),
             reload: false,
+            rebuild: false,
             init_data_sent: false,
             data_ready: false,
             new_resolution: None,
             new_output_texture: None,
+            new_depth_texture: None,
             data_handler: gpu_data_handler,
             spyglass: BoxTreeSpyGlass {
+                depth_texture: create_depth_texture(resolution, &mut images),
                 output_texture,
                 viewport_changed: true,
                 node_requests: vec![empty_marker(); 4],

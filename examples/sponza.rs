@@ -21,7 +21,7 @@ use iyes_perf_ui::{
 use image::{ImageBuffer, Rgb};
 
 #[cfg(feature = "bevy_wgpu")]
-const DISPLAY_RESOLUTION: [u32; 2] = [1024, 768];
+const DISPLAY_RESOLUTION: [u32; 2] = [1920, 1080];
 
 #[cfg(feature = "bevy_wgpu")]
 const BRICK_DIMENSION: u32 = 32;
@@ -74,21 +74,21 @@ fn setup(mut commands: Commands, images: ResMut<Assets<Image>>) {
     let mut views = VhxViewSet::default();
     let view_index = host.create_new_view(
         &mut views,
-        40,
-        Viewport {
-            origin: V3c {
+        42,
+        Viewport::new(
+            V3c {
                 x: 0.,
                 y: 0.,
                 z: 0.,
             },
-            direction: V3c {
+            V3c {
                 x: 0.,
                 y: 0.,
                 z: -1.,
             },
-            frustum: V3c::new(10., 10., 200.),
-            fov: 3.,
-        },
+            V3c::new(10., 10., 1000.),
+            3.,
+        ),
         DISPLAY_RESOLUTION,
         images,
     );
@@ -100,7 +100,10 @@ fn setup(mut commands: Commands, images: ResMut<Assets<Image>>) {
             .output_texture()
             .clone(),
     );
-    display.custom_size = Some(Vec2::new(1024., 768.));
+    display.custom_size = Some(Vec2::new(
+        DISPLAY_RESOLUTION[0] as f32,
+        DISPLAY_RESOLUTION[1] as f32,
+    ));
     commands.spawn(display);
     commands.insert_resource(views);
     commands.spawn((
@@ -164,7 +167,9 @@ fn handle_zoom(
     keys: Res<ButtonInput<KeyCode>>,
     tree: ResMut<BoxTreeGPUHost>,
     view_set: ResMut<VhxViewSet>,
+    mut images: ResMut<Assets<Image>>,
     mut camera_query: Query<&mut PanOrbitCamera>,
+    mut sprite_query: Query<&mut Sprite>,
 ) {
     let mut tree_view = view_set.views[0].lock().unwrap();
 
@@ -174,14 +179,13 @@ fn handle_zoom(
         let viewport_right_direction = viewport_up_direction
             .cross(tree_view.spyglass.viewport().direction)
             .normalized();
-        let pixel_width =
-            tree_view.spyglass.viewport().frustum.x as f32 / DISPLAY_RESOLUTION[0] as f32;
+        let pixel_width = tree_view.spyglass.view_frustum().x as f32 / DISPLAY_RESOLUTION[0] as f32;
         let pixel_height =
-            tree_view.spyglass.viewport().frustum.y as f32 / DISPLAY_RESOLUTION[1] as f32;
+            tree_view.spyglass.view_frustum().y as f32 / DISPLAY_RESOLUTION[1] as f32;
         let viewport_bottom_left = tree_view.spyglass.viewport().origin
-            + (tree_view.spyglass.viewport().direction * tree_view.spyglass.viewport().frustum.z)
-            - (viewport_up_direction * (tree_view.spyglass.viewport().frustum.y / 2.))
-            - (viewport_right_direction * (tree_view.spyglass.viewport().frustum.x / 2.));
+            + (tree_view.spyglass.viewport().direction * tree_view.spyglass.view_frustum().z)
+            - (viewport_up_direction * (tree_view.spyglass.view_frustum().y / 2.))
+            - (viewport_right_direction * (tree_view.spyglass.view_frustum().x / 2.));
 
         // define light
         let diffuse_light_normal = V3c::new(0., -1., 1.).normalized();
@@ -241,14 +245,32 @@ fn handle_zoom(
         cam.target_focus.y -= 1.;
     }
 
-    if keys.pressed(KeyCode::NumpadAdd) {
-        tree_view.spyglass.viewport_mut().frustum.z *= 1.01;
-    }
-    if keys.pressed(KeyCode::NumpadSubtract) {
-        tree_view.spyglass.viewport_mut().frustum.z *= 0.99;
-    }
+    // if keys.pressed(KeyCode::NumpadAdd) {
+    //     tree_view.view_frustum_mut().z *= 1.01;
+    // }
+    // if keys.pressed(KeyCode::NumpadSubtract) {
+    //     tree_view.view_frustum_mut().z *= 0.99;
+    // }
     if keys.pressed(KeyCode::F3) {
         println!("{:?}", tree_view.spyglass.viewport());
+    }
+
+    const RESOLUTION_DELTA: f32 = 0.1;
+    if keys.just_pressed(KeyCode::NumpadAdd) {
+        let res = tree_view.resolution();
+        let new_res = [
+            (res[0] as f32 * (1. + RESOLUTION_DELTA)) as u32,
+            (res[1] as f32 * (1. + RESOLUTION_DELTA)) as u32,
+        ];
+        sprite_query.single_mut().image = tree_view.set_resolution(new_res, &mut images);
+    }
+    if keys.just_pressed(KeyCode::NumpadSubtract) {
+        let res = tree_view.resolution();
+        let new_res = [
+            (res[0] as f32 * (1. - RESOLUTION_DELTA)).max(4.) as u32,
+            (res[1] as f32 * (1. - RESOLUTION_DELTA)).max(3.) as u32,
+        ];
+        sprite_query.single_mut().image = tree_view.set_resolution(new_res, &mut images);
     }
 
     if let Some(_) = cam.radius {

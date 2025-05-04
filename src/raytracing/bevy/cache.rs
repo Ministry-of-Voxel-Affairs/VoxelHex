@@ -592,12 +592,6 @@ impl BoxTreeGPUDataHandler {
                     .unwrap_or(&BrickOwnedBy::NotOwned)
                 {
                     BrickOwnedBy::NodeAsChild(key, sectant) => {
-                        debug_assert!(
-                            self.node_key_vs_meta_index.contains_left(&(key as usize)),
-                            "Expected brick[{}] to be owned by a node used in cache. Node key: {}",
-                            brick_index,
-                            key
-                        );
                         if self
                             .node_key_vs_meta_index
                             .get_by_left(&(key as usize))

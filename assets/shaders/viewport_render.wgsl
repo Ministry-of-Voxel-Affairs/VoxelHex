@@ -22,6 +22,8 @@ const COLOR_FOR_NODE_REQUEST_SENT = vec3f(0.5,0.3,0.0);
 const COLOR_FOR_NODE_REQUEST_FAIL = vec3f(0.7,0.2,0.0);
 const COLOR_FOR_BRICK_REQUEST_SENT = vec3f(0.3,0.1,0.0);
 const COLOR_FOR_BRICK_REQUEST_FAIL = vec3f(0.6,0.0,0.0);
+const VHX_PREPASS_STAGE_ID = 1u;
+const VHX_RENDER_STAGE_ID = 2u;
 
 //crate::spatial::math::hash_region
 fn hash_region(offset: vec3f, size: f32) -> u32 {
@@ -302,6 +304,27 @@ struct BrickHit{
     flat_index: u32,
 }
 
+/// In preprocess, a small resolution depth texture is rendered.
+/// After a certain distance in the ray, the result becomes ambigious,
+/// because the pixel ( source of raycast ) might cover multiple voxels at the same time.
+/// The estimate distance before the ambigiutiy is still adequate is calculated based on:
+/// texture_resolution / voxels_count(distance) >= minimum_size_of_voxel_in_pixels
+/// wherein:
+/// voxels_count: the number of voxel estimated to take up the viewport at a given distance
+/// minimum_size_of_voxel_in_pixels: based on the depth texture half the size of the output
+/// --> the size of a voxel to be large enough to be always contained by
+/// --> at least one pixel in the depth texture
+/// No need to continue iteration if one voxel becomes too small to be covered by a pixel completely
+/// In these cases, there were no hits so far, which is valuable information
+/// even if no useful data can be collected moving forward.
+fn max_distance_of_reliable_hit() -> f32 {
+    return(
+        viewport.fov
+        * f32(stage_data.output_resolution.x * stage_data.output_resolution.y)
+        / (viewport.frustum.x * viewport.frustum.y * sqrt(8.))
+    ) - viewport.fov;
+}
+
 fn traverse_brick(
     ray: ptr<function, Line>,
     ray_current_point: ptr<function,vec3f>,
@@ -309,6 +332,7 @@ fn traverse_brick(
     brick_bounds: ptr<function, Cube>,
     ray_scale_factors: ptr<function, vec3f>,
     direction_lut_index: u32,
+    max_distance: f32,
 ) -> BrickHit {
     let dimension = i32(boxtree_meta_data.tree_properties & 0x0000FFFF);
     let voxels_count = i32(arrayLength(&voxels));
@@ -355,7 +379,6 @@ fn traverse_brick(
             return BrickHit(false, vec3u(), 0);
         }
 
-
         // step delta calculated from crate::spatial::math::flat_projection
         // --> e.g. flat_delta_y = flat_projection(0, 1, 0, brick_dim);
         current_flat_index += (
@@ -372,6 +395,11 @@ fn traverse_brick(
         {
             return BrickHit(true, vec3u(current_index), u32(current_flat_index));
         }
+        if stage_data.stage == VHX_PREPASS_STAGE_ID
+            && length(*ray_current_point - (*ray).origin) >= max_distance
+        {
+            return BrickHit(false, vec3u(current_index), u32(current_flat_index));
+        }
 
         step = round(dda_step_to_next_sibling(
             ray, ray_current_point, &current_bounds, ray_scale_factors
@@ -387,7 +415,7 @@ fn traverse_brick(
 struct OctreeRayIntersection {
     hit: bool,
     albedo : vec4<f32>,
-    collision_point: vec3f,
+    impact_point: vec3f,
     impact_normal: vec3f,
 }
 
@@ -399,6 +427,7 @@ fn probe_brick(
     brick_bounds: ptr<function, Cube>,
     ray_scale_factors: ptr<function, vec3f>,
     direction_lut_index: u32,
+    max_distance: f32,
 ) -> OctreeRayIntersection {
     if(( // node is occupied at target child_sectant, meaning: brick is not empty
         (brick_sectant < 32)
@@ -423,8 +452,16 @@ fn probe_brick(
             let leaf_brick_hit = traverse_brick(
                 ray, ray_current_point,
                 brick_descriptor & 0x0000FFFF,
-                brick_bounds, ray_scale_factors, direction_lut_index
+                brick_bounds, ray_scale_factors, direction_lut_index,
+                max_distance
             );
+
+            if stage_data.stage == VHX_PREPASS_STAGE_ID {
+                if leaf_brick_hit.hit == false && leaf_brick_hit.flat_index != 0 {
+                    return OctreeRayIntersection(true, vec4f(0.), *ray_current_point, vec3f(0., 0., 1.));
+                }
+            }
+
             if leaf_brick_hit.hit == true {
                 let unit_voxel_size = round(
                     (*brick_bounds).size
@@ -445,7 +482,7 @@ fn probe_brick(
             }
         }
     }
-    return OctreeRayIntersection(false, vec4f(0.), vec3f(0.), vec3f(0., 0., 1.));
+    return OctreeRayIntersection(false, vec4f(0.), *ray_current_point, vec3f(0., 0., 1.));
 }
 
 fn probe_MIP(
@@ -455,6 +492,7 @@ fn probe_MIP(
     node_bounds: ptr<function, Cube>,
     ray_scale_factors: ptr<function, vec3f>,
     direction_lut_index: u32,
+    max_distance: f32
 ) -> OctreeRayIntersection {
     let brick_descriptor = node_mips[node_key];
     if( // there is a valid mip present
@@ -475,7 +513,8 @@ fn probe_MIP(
             let leaf_brick_hit = traverse_brick(
                 ray, &brick_point,
                 brick_descriptor & 0x0000FFFF,
-                node_bounds, ray_scale_factors, direction_lut_index
+                node_bounds, ray_scale_factors, direction_lut_index,
+                max_distance
             );
             if leaf_brick_hit.hit == true {
                 let unit_voxel_size = round((*node_bounds).size / f32(boxtree_meta_data.tree_properties & 0x0000FFFF));
@@ -494,7 +533,7 @@ fn probe_MIP(
             }
         }
     }
-    return OctreeRayIntersection(false, vec4f(0.), vec3f(0.), vec3f(0., 0., 1.));
+    return OctreeRayIntersection(false, vec4f(0.), *ray_current_point, vec3f(0., 0., 1.));
 }
 
 // Unique to this implementation, not adapted from rust code
@@ -562,7 +601,7 @@ fn traverse_node_for_ocbits(
     return result;
 }
 
-fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
+fn get_by_ray(ray: ptr<function, Line>, start_distance: f32) -> OctreeRayIntersection {
     var ray_scale_factors = get_dda_scale_factors(ray); // Should be const, but then it can't be passed as ptr
     var tmp_vec = vec3f(1.) + normalize((*ray).direction); // using local variable as temporary storage
     // I shall answer for my crimes later
@@ -571,10 +610,14 @@ fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
         + u32(tmp_vec.z >= 1.) * 2u
         + u32(tmp_vec.y >= 1.) * 4u
     );
+    var max_distance = 2. * f32(boxtree_meta_data.boxtree_size);
+    if stage_data.stage == VHX_PREPASS_STAGE_ID {
+        max_distance = max_distance_of_reliable_hit();
+    }
 
     var node_stack: array<u32, NODE_STACK_SIZE>;
     var node_stack_meta: u32 = 0;
-    var ray_current_point = (*ray).origin;
+    var ray_current_point = (*ray).origin + (*ray).direction * start_distance;
     var current_bounds = Cube(vec3(0.), f32(boxtree_meta_data.boxtree_size));
     var target_bounds = current_bounds;
     var current_node_key = BOXTREE_ROOT_NODE_KEY;
@@ -586,7 +629,7 @@ fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
 
     let root_intersect = cube_intersect_ray(current_bounds, ray);
     if(root_intersect.hit){
-        if(root_intersect.impact_hit) {
+        if( 0. == start_distance && root_intersect.impact_hit == true ) {
             ray_current_point += (*ray).direction * root_intersect.impact_distance;
         }
         target_sectant = hash_region(ray_current_point, current_bounds.size);
@@ -595,7 +638,7 @@ fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
     /*// +++ DEBUG +++
     var outer_safety = 0;
     */// --- DEBUG ---
-    while target_sectant != OOB_SECTANT {
+    while target_sectant != OOB_SECTANT && length(ray_current_point - (*ray).origin) < max_distance{
         /*// +++ DEBUG +++
         outer_safety += 1;
         if(f32(outer_safety) > f32(boxtree_meta_data.boxtree_size) * sqrt(3.)) {
@@ -616,7 +659,10 @@ fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
         /*// +++ DEBUG +++
         var safety = 0;
         */// --- DEBUG ---
-        while(!node_stack_is_empty(node_stack_meta)) {
+        while(
+            !node_stack_is_empty(node_stack_meta)
+            && length(ray_current_point - (*ray).origin) < max_distance
+        ) {
             /*// +++ DEBUG +++
             safety += 1;
             if(f32(safety) > f32(boxtree_meta_data.boxtree_size) * sqrt(30.)) {
@@ -625,12 +671,18 @@ fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
                 );
             }
             */// --- DEBUG ---
-            // backtrack by default after miss, in case node is a uniform leaf
+            if(
+                stage_data.stage == VHX_PREPASS_STAGE_ID
+                && length(ray_current_point - (*ray).origin) >= max_distance
+            ) {
+                return OctreeRayIntersection( false, vec4f(0.), ray_current_point, vec3f(0., 0., 1.) );
+            }
+
             if( // In case MIPs are enabled
                 (0 != (boxtree_meta_data.tree_properties & 0x00010000))
                 &&( // In case current node MIP level is smaller, than the required MIP level
                     mip_level <
-                    ( // Note: Aligning to bound borders deemed undesriable artefaccts
+                    ( // Note: Aligning to bound borders deemed undesriable artefacts
                         length( // based on ray current travel distance
                             viewport.origin - ( // aligned to nearest cube edges(based on current MIP level)
                                 round(ray_current_point / (mip_level * 2.)) * (mip_level * 2.)
@@ -649,7 +701,8 @@ fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
                     let mip_hit = probe_MIP(
                         ray, &ray_current_point,
                         current_node_key, &current_bounds,
-                        &ray_scale_factors, direction_lut_index
+                        &ray_scale_factors, direction_lut_index,
+                        max_distance
                     );
                     if true == mip_hit.hit {
                         return mip_hit;
@@ -692,12 +745,15 @@ fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
                     );
                 }
                 
-                // Check if MIP is enabled
-                if (0 != (boxtree_meta_data.tree_properties & 0x00010000)){
+                if ( // Probe MIP at data miss, if enabled
+                    0 != (boxtree_meta_data.tree_properties & 0x00010000)
+                    && stage_data.stage != VHX_PREPASS_STAGE_ID
+                ){
                     var mip_hit = probe_MIP(
                         ray, &ray_current_point,
                         current_node_key, &current_bounds,
-                        &ray_scale_factors, direction_lut_index
+                        &ray_scale_factors, direction_lut_index,
+                        max_distance
                     );
                     if true == mip_hit.hit {
                         mip_hit.albedo -= vec4f(missing_data_color, 0.);
@@ -715,20 +771,22 @@ fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
                     hit = probe_brick(
                         ray, &ray_current_point,
                         current_node_key, 0u, &current_bounds,
-                        &ray_scale_factors, direction_lut_index
+                        &ray_scale_factors, direction_lut_index,
+                        max_distance
                     );
                 } else { // node is a non-uniform leaf
                     hit = probe_brick(
                         ray, &ray_current_point,
                         current_node_key, target_sectant, &target_bounds,
-                        &ray_scale_factors, direction_lut_index
+                        &ray_scale_factors, direction_lut_index,
+                        max_distance
                     );
                 }
                 if hit.hit == true {
                     hit.albedo -= vec4f(missing_data_color, 0.);
 
                     /*// +++ DEBUG +++
-                    let relative_c_point = hit.collision_point - current_bounds.min_position;
+                    let relative_c_point = hit.impact_point - current_bounds.min_position;
                     if (relative_c_point.x < 5. || relative_c_point.y < 5. || relative_c_point.z < 5.) {
                         hit.albedo.b = 1.;
                     }
@@ -777,10 +835,17 @@ fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
                 target_bounds = current_bounds;
                 current_bounds.size *= f32(BOX_NODE_DIMENSION);
                 current_bounds.min_position -= current_bounds.min_position % current_bounds.size;
+                let ray_point_before_pop = ray_current_point;
                 tmp_vec = round(dda_step_to_next_sibling(
                     ray, &ray_current_point, &target_bounds,
                     &ray_scale_factors
                 ));
+                if(
+                    stage_data.stage == VHX_PREPASS_STAGE_ID
+                    && length(ray_current_point - (*ray).origin) >= max_distance
+                ) {
+                    return OctreeRayIntersection( false, vec4f(0.), ray_point_before_pop, vec3f(0., 0., 1.) );
+                }
                 target_sectant = SECTANT_STEP_RESULT_LUT[
                     hash_region(
                         (
@@ -895,22 +960,24 @@ fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
                                 && ( 0u != (node_occupied_bits[current_node_key * 2 + 1] & (0x01u << (target_sectant - 32u))) )
                             ))
                         )
+                        ||( length(ray_current_point - (*ray).origin) >= max_distance )
                     ) {
                         break;
                     }
-                }
+                } // advance loop
             }
         } // while (node_stack not empty)
 
         // Push ray current distance a little bit forward to avoid iterating the same paths all over again
         ray_current_point += (*ray).direction * 0.1;
         if(
-          ray_current_point.x < f32(boxtree_meta_data.boxtree_size)
-          && ray_current_point.y < f32(boxtree_meta_data.boxtree_size)
-          && ray_current_point.z < f32(boxtree_meta_data.boxtree_size)
-          && ray_current_point.x > 0.
-          && ray_current_point.y > 0.
-          && ray_current_point.z > 0.
+            length(ray_current_point - (*ray).origin) < max_distance
+            && ray_current_point.x < f32(boxtree_meta_data.boxtree_size)
+            && ray_current_point.y < f32(boxtree_meta_data.boxtree_size)
+            && ray_current_point.z < f32(boxtree_meta_data.boxtree_size)
+            && ray_current_point.x > 0.
+            && ray_current_point.y > 0.
+            && ray_current_point.z > 0.
         ) {
             target_sectant = hash_region(
                 ray_current_point,
@@ -920,7 +987,7 @@ fn get_by_ray(ray: ptr<function, Line>) -> OctreeRayIntersection {
             target_sectant = OOB_SECTANT;
         }
     } // while (ray inside root bounds)
-    return OctreeRayIntersection(false, vec4f(missing_data_color, 1.), vec3f(0.), vec3f(0., 0., 1.));
+    return OctreeRayIntersection(false, vec4f(missing_data_color, 1.), ray_current_point, vec3f(0., 0., 1.));
 }
 
 alias PaletteIndexValues = u32;
@@ -952,41 +1019,49 @@ struct Viewport {
     fov: f32,
 }
 
+struct RenderStageData {
+    stage: u32,
+    output_resolution: vec2u,
+}
+
 @group(0) @binding(0)
-var output_texture: texture_storage_2d<rgba8unorm, read_write>;
+var<uniform> stage_data: RenderStageData;
 
 @group(0) @binding(1)
-var<uniform> viewport: Viewport;
+var output_texture: texture_storage_2d<rgba8unorm, read_write>;
 
 @group(0) @binding(2)
-var<storage, read_write> node_requests: array<atomic<u32>>;
-
-@group(0) @binding(3)
-var<uniform> debug_data: u32;
+var depth_texture: texture_storage_2d<r32float, read_write>;
 
 @group(1) @binding(0)
-var<uniform> boxtree_meta_data: BoxtreeMetaData;
+var<uniform> viewport: Viewport;
 
 @group(1) @binding(1)
+var<storage, read_write> node_requests: array<atomic<u32>>;
+
+@group(2) @binding(0)
+var<uniform> boxtree_meta_data: BoxtreeMetaData;
+
+@group(2) @binding(1)
 var<storage, read_write> used_bits: array<atomic<u32>>;
 
-@group(1) @binding(2)
-var<storage, read_write> node_metadata: array<u32>;
+@group(2) @binding(2)
+var<storage, read> node_metadata: array<u32>;
 
-@group(1) @binding(3)
-var<storage, read_write> node_children: array<u32>;
+@group(2) @binding(3)
+var<storage, read> node_children: array<u32>;
 
-@group(1) @binding(4)
-var<storage, read_write> node_mips: array<u32>;
+@group(2) @binding(4)
+var<storage, read> node_mips: array<u32>;
 
-@group(1) @binding(5)
-var<storage, read_write> node_occupied_bits: array<u32>;
+@group(2) @binding(5)
+var<storage, read> node_occupied_bits: array<u32>;
 
-@group(1) @binding(6)
-var<storage, read_write> voxels: array<PaletteIndexValues>;
+@group(2) @binding(6)
+var<storage, read> voxels: array<PaletteIndexValues>;
 
-@group(1) @binding(7)
-var<storage, read_write> color_palette: array<vec4f>;
+@group(2) @binding(7)
+var<storage, read> color_palette: array<vec4f>;
 
 
 @compute @workgroup_size(8, 8, 1)
@@ -1007,49 +1082,73 @@ fn update(
         + (
             normalize(cross(vec3f(0., 1., 0.), viewport.direction))
             * viewport.frustum.x
-            * (f32(invocation_id.x) / f32(num_workgroups.x * 8))
+            * (f32(invocation_id.x) / f32(stage_data.output_resolution.x))
         ) // Viewport right direction
         + (
             vec3f(0., 1., 0.) * viewport.frustum.y
-            * (1. - (f32(invocation_id.y) / f32(num_workgroups.y * 8)))
+            * (1. - (f32(invocation_id.y) / f32(stage_data.output_resolution.y)))
         ) // Viewport up direction
         ;
     var ray = Line(ray_endpoint, normalize(ray_endpoint - viewport.origin));
-    var rgb_result = vec3f(0.5,1.0,1.0);
-    var ray_result = get_by_ray(&ray);
-    if ray_result.hit == true {
-        rgb_result = (
-            ray_result.albedo.rgb * (
-                dot(ray_result.impact_normal, vec3f(-0.5,0.5,-0.5)) / 2. + 0.5
-            )
-        ).rgb;
-    } else {
-        rgb_result = (rgb_result + ray_result.albedo.rgb) / 2.;
-    }
+    if stage_data.stage == VHX_PREPASS_STAGE_ID {
+        // In preprocess, for every pixel in the depth texture, traverse the model until
+        // either there's a hit or the voxels are too far away to determine 
+        // exactly which pixel belongs to which voxel
+        textureStore(
+            depth_texture, vec2u(invocation_id.xy),
+            vec4f(length(get_by_ray(&ray, 0.).impact_point - ray.origin))
+        );
+    } else
+    if stage_data.stage == VHX_RENDER_STAGE_ID {
+        var rgb_result = vec3f(0.5,1.0,1.0);
 
-    /*// +++ DEBUG +++
-    var root_bounds = Cube(vec3(0.,0.,0.), f32(boxtree_meta_data.boxtree_size));
-    let root_intersect = cube_intersect_ray(root_bounds, &ray);
-    if root_intersect.hit == true {
-        // Display the xyz axes
-        if root_intersect. impact_hit == true {
-            let axes_length = f32(boxtree_meta_data.boxtree_size) / 2.;
-            let axes_width = f32(boxtree_meta_data.boxtree_size) / 50.;
-            let entry_point = (ray.origin + ray.direction * root_intersect.impact_distance);
-            if entry_point.x < axes_length && entry_point.y < axes_width && entry_point.z < axes_width {
-                rgb_result.r = 1.;
+        // get relevant pixels in depth
+        let start_distance = min(
+            textureLoad(depth_texture, vec2u(invocation_id.xy / 2)),
+            min(
+                textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(0,1)),
+                min(
+                    textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(1,0)),
+                    textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(1,1))
+                )
+            )
+        ).r;
+
+        var ray_result = get_by_ray(&ray, start_distance);
+        /*// +++ DEBUG +++
+        var root_bounds = Cube(vec3(0.,0.,0.), f32(boxtree_meta_data.boxtree_size));
+        let root_intersect = cube_intersect_ray(root_bounds, &ray);
+        if root_intersect.hit == true {
+            // Display the xyz axes
+            if root_intersect. impact_hit == true {
+                let axes_length = f32(boxtree_meta_data.boxtree_size) / 2.;
+                let axes_width = f32(boxtree_meta_data.boxtree_size) / 50.;
+                let entry_point = (ray.origin + ray.direction * root_intersect.impact_distance);
+                if entry_point.x < axes_length && entry_point.y < axes_width && entry_point.z < axes_width {
+                    rgb_result.r = 1.;
+                }
+                if entry_point.x < axes_width && entry_point.y < axes_length && entry_point.z < axes_width {
+                    rgb_result.g = 1.;
+                }
+                if entry_point.x < axes_width && entry_point.y < axes_width && entry_point.z < axes_length {
+                    rgb_result.b = 1.;
+                }
             }
-            if entry_point.x < axes_width && entry_point.y < axes_length && entry_point.z < axes_width {
-                rgb_result.g = 1.;
-            }
-            if entry_point.x < axes_width && entry_point.y < axes_width && entry_point.z < axes_length {
-                rgb_result.b = 1.;
-            }
+            rgb_result.b += 0.1; // Also color in the area of the boxtree
         }
-        rgb_result.b += 0.1; // Also color in the area of the boxtree
+        */// --- DEBUG ---
+        if ray_result.hit == true {
+            rgb_result = (
+                ray_result.albedo.rgb * (
+                    dot(ray_result.impact_normal, vec3f(-0.5,0.5,-0.5)) / 2. + 0.5
+                )
+            ).rgb;
+        } else {
+            rgb_result = (rgb_result + ray_result.albedo.rgb) / 2.;
+        }
+
+        textureStore(output_texture, vec2u(invocation_id.xy), vec4f(rgb_result, 1.));
     }
-    */// --- DEBUG ---
-    textureStore(output_texture, vec2u(invocation_id.xy), vec4f(rgb_result, 1.));
 }
 
 const SECTANT_OFFSET_REGION_LUT: array<vec3f, 64> = array<vec3f, 64>(

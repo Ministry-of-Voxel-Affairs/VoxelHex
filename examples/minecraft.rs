@@ -66,20 +66,20 @@ fn setup(mut commands: Commands, images: ResMut<Assets<Image>>) {
     let view_index = host.create_new_view(
         &mut views,
         10,
-        Viewport {
-            origin: V3c {
+        Viewport::new(
+            V3c {
                 x: 0.,
                 y: 0.,
                 z: 0.,
             },
-            direction: V3c {
+            V3c {
                 x: 0.,
                 y: 0.,
                 z: -1.,
             },
-            frustum: V3c::new(10., 10., 200.),
-            fov: 6.,
-        },
+            V3c::new(10., 10., 200.),
+            6.,
+        ),
         DISPLAY_RESOLUTION,
         images,
     );
@@ -169,14 +169,13 @@ fn handle_zoom(
         let viewport_right_direction = viewport_up_direction
             .cross(tree_view.spyglass.viewport().direction)
             .normalized();
-        let pixel_width =
-            tree_view.spyglass.viewport().frustum.x as f32 / DISPLAY_RESOLUTION[0] as f32;
+        let pixel_width = tree_view.spyglass.view_frustum().x as f32 / DISPLAY_RESOLUTION[0] as f32;
         let pixel_height =
-            tree_view.spyglass.viewport().frustum.y as f32 / DISPLAY_RESOLUTION[1] as f32;
+            tree_view.spyglass.view_frustum().y as f32 / DISPLAY_RESOLUTION[1] as f32;
         let viewport_bottom_left = tree_view.spyglass.viewport().origin
-            + (tree_view.spyglass.viewport().direction * tree_view.spyglass.viewport().fov)
-            - (viewport_up_direction * (tree_view.spyglass.viewport().frustum.y / 2.))
-            - (viewport_right_direction * (tree_view.spyglass.viewport().frustum.x / 2.));
+            + (tree_view.spyglass.viewport().direction * tree_view.spyglass.view_fov())
+            - (viewport_up_direction * (tree_view.spyglass.view_frustum().y / 2.))
+            - (viewport_right_direction * (tree_view.spyglass.view_frustum().x / 2.));
 
         // define light
         let diffuse_light_normal = V3c::new(0., -1., 1.).normalized();

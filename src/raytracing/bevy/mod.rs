@@ -7,7 +7,7 @@ pub use crate::raytracing::bevy::types::{
     BoxTreeGPUHost, BoxTreeGPUView, BoxTreeSpyGlass, RenderBevyPlugin, VhxViewSet, Viewport,
 };
 use crate::{
-    boxtree::{Albedo, VoxelData},
+    boxtree::{Albedo, V3cf32, VoxelData},
     raytracing::bevy::{
         data::{handle_gpu_readback, sync_with_main_world, write_to_gpu},
         pipeline::prepare_bind_groups,
@@ -62,7 +62,7 @@ impl BoxTreeGPUView {
     /// Provides the handle to the output texture
     /// Warning! Handle will no longer being updated after resolution change
     pub fn output_texture(&self) -> &Handle<Image> {
-        &self.output_texture
+        &self.spyglass.output_texture
     }
 
     /// Updates the resolution on which the view operates on.
@@ -75,9 +75,11 @@ impl BoxTreeGPUView {
         if self.resolution != resolution {
             self.new_resolution = Some(resolution);
             self.new_output_texture = Some(create_output_texture(resolution, images));
+            self.new_depth_texture = Some(create_depth_texture(resolution, images));
+            self.rebuild = true;
             self.new_output_texture.as_ref().unwrap().clone_weak()
         } else {
-            self.output_texture.clone_weak()
+            self.spyglass.output_texture.clone_weak()
         }
     }
 
@@ -91,10 +93,26 @@ impl BoxTreeSpyGlass {
     pub fn viewport(&self) -> &Viewport {
         &self.viewport
     }
-
+    pub fn view_frustum(&self) -> &V3cf32 {
+        &self.viewport.frustum
+    }
+    pub fn view_fov(&self) -> f32 {
+        self.viewport.fov
+    }
     pub fn viewport_mut(&mut self) -> &mut Viewport {
         self.viewport_changed = true;
         &mut self.viewport
+    }
+}
+
+impl Viewport {
+    pub fn new(origin: V3cf32, direction: V3cf32, frustum: V3cf32, fov: f32) -> Self {
+        Self {
+            origin,
+            direction,
+            frustum,
+            fov,
+        }
     }
 }
 
@@ -139,28 +157,66 @@ pub(crate) fn create_output_texture(
     images.add(output_texture)
 }
 
+/// Create a depth texture for the given output resolutions
+/// Depth texture resolution should cover a single voxel
+pub(crate) fn create_depth_texture(
+    resolution: [u32; 2],
+    images: &mut ResMut<Assets<Image>>,
+) -> Handle<Image> {
+    let mut depth_texture = Image::new_fill(
+        Extent3d {
+            width: resolution[0] / 2,
+            height: resolution[1] / 2,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        &[0, 0, 0, 255],
+        TextureFormat::R32Float,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+    depth_texture.texture_descriptor.usage =
+        TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING;
+
+    images.add(depth_texture)
+}
+
 pub(crate) fn handle_resolution_updates(
     viewset: Option<ResMut<VhxViewSet>>,
     images: ResMut<Assets<Image>>,
     server: Res<AssetServer>,
 ) {
     if let Some(viewset) = viewset {
-        {
-            let mut current_view = viewset.views[0].lock().unwrap();
-            // check for resolution update requests
-            if current_view.new_resolution.is_some() {
-                // see if a new output texture is loaded for the requested resolution yet
-                let new_out_tex = current_view
-                    .new_output_texture
-                    .as_ref()
-                    .unwrap()
-                    .clone_weak();
-                if images.get(&new_out_tex).is_some()
-                    || matches!(server.get_load_state(&new_out_tex), Some(LoadState::Loaded))
-                {
-                    current_view.resolution = current_view.new_resolution.take().unwrap();
-                    current_view.output_texture = current_view.new_output_texture.take().unwrap();
-                }
+        let mut current_view = viewset.views[0].lock().unwrap();
+        if current_view.new_resolution.is_some() {
+            // see if a new output texture is loaded for the requested resolution yet
+            let new_out_tex = current_view
+                .new_output_texture
+                .as_ref()
+                .unwrap()
+                .clone_weak();
+            if images.get(&new_out_tex).is_some()
+                || matches!(server.get_load_state(&new_out_tex), Some(LoadState::Loaded))
+            {
+                current_view.resolution = current_view.new_resolution.take().unwrap();
+                current_view.spyglass.output_texture =
+                    current_view.new_output_texture.clone().unwrap();
+            }
+        }
+
+        if current_view.new_depth_texture.is_some() {
+            let new_depth_tex = current_view
+                .new_depth_texture
+                .as_ref()
+                .unwrap()
+                .clone_weak();
+            if images.get(&new_depth_tex).is_some()
+                || matches!(
+                    server.get_load_state(&new_depth_tex),
+                    Some(LoadState::Loaded)
+                )
+            {
+                current_view.spyglass.depth_texture =
+                    current_view.new_depth_texture.clone().unwrap();
             }
         }
     }
