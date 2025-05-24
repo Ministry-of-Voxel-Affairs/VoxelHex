@@ -109,7 +109,7 @@ impl<
     /// Creates GPU compatible data renderable on the GPU from an BoxTree
     pub fn create_new_view(
         &mut self,
-        vhx_view_set: &mut VhxViewSet,
+        viewset: &mut VhxViewSet,
         nodes_in_view: usize,
         viewport: Viewport,
         resolution: [u32; 2],
@@ -142,7 +142,7 @@ impl<
             uploaded_color_palette_size: 0,
         };
         let output_texture = create_output_texture(resolution, &mut images);
-        vhx_view_set.views.push(Arc::new(Mutex::new(BoxTreeGPUView {
+        viewset.views.push(Arc::new(Mutex::new(BoxTreeGPUView {
             resolution,
             reload: false,
             rebuild: false,
@@ -160,10 +160,10 @@ impl<
                 viewport,
             },
         })));
-        vhx_view_set.resources.push(None);
+        viewset.resources.push(None);
 
-        debug_assert_eq!(vhx_view_set.resources.len(), vhx_view_set.views.len());
-        vhx_view_set.views.len() - 1
+        debug_assert_eq!(viewset.resources.len(), viewset.views.len());
+        viewset.views.len() - 1
     }
 }
 
@@ -235,12 +235,16 @@ fn read_buffer(
 /// Based on https://docs.rs/bevy/latest/src/gpu_readback/gpu_readback.rs.html
 pub(crate) fn handle_gpu_readback(
     render_device: Res<RenderDevice>,
-    vhx_view_set: ResMut<VhxViewSet>,
+    viewset: Option<ResMut<VhxViewSet>>,
     vhx_pipeline: Option<ResMut<VhxRenderPipeline>>,
 ) {
-    if vhx_pipeline.is_some() {
-        let mut view = vhx_view_set.views[0].lock().unwrap();
-        let resources = vhx_view_set.resources[0].as_ref();
+    if let (Some(_vhx_pipeline), Some(viewset)) = (vhx_pipeline, viewset) {
+        if 0 == viewset.views.len() {
+            return; // Nothing to do without views..
+        }
+
+        let mut view = viewset.views[0].lock().unwrap();
+        let resources = viewset.resources[0].as_ref();
 
         if resources.is_some() {
             let resources = resources.unwrap();
@@ -381,14 +385,19 @@ pub(crate) fn write_to_gpu<
 >(
     tree_gpu_host: Option<ResMut<BoxTreeGPUHost<T>>>,
     vhx_pipeline: Option<ResMut<VhxRenderPipeline>>,
-    vhx_view_set: ResMut<VhxViewSet>,
+    viewset: Option<ResMut<VhxViewSet>>,
 ) {
-    if let (Some(pipeline), Some(tree_host)) = (vhx_pipeline, tree_gpu_host) {
-        let mut view = vhx_view_set.views[0].lock().unwrap();
+    if let (Some(pipeline), Some(tree_host), Some(viewset)) = (vhx_pipeline, tree_gpu_host, viewset)
+    {
+        if 0 == viewset.views.len() {
+            return; // Nothing to do without views..
+        }
+
+        let mut view = viewset.views[0].lock().unwrap();
 
         // Initial BoxTree data upload
         if !view.init_data_sent || view.reload {
-            if let Some(resources) = &vhx_view_set.resources[0] {
+            if let Some(resources) = &viewset.resources[0] {
                 // write data for root node
                 view.data_handler
                     .add_node(&tree_host.tree, BoxTree::<T>::ROOT_NODE_KEY as usize);
@@ -431,7 +440,7 @@ pub(crate) fn write_to_gpu<
                 view.reload = false;
             }
         }
-        let resources = if let Some(resources) = &vhx_view_set.resources[0] {
+        let resources = if let Some(resources) = &viewset.resources[0] {
             resources
         } else {
             // No resources available yet, can't write to them
@@ -701,7 +710,7 @@ pub(crate) fn write_to_gpu<
         let host_color_count = tree.map_to_color_index_in_palette.keys().len();
         let color_palette_size_diff =
             host_color_count - view.data_handler.uploaded_color_palette_size;
-        let resources = &vhx_view_set.resources[0].as_ref().unwrap();
+        let resources = &viewset.resources[0].as_ref().unwrap();
 
         debug_assert!(
             host_color_count >= view.data_handler.uploaded_color_palette_size,

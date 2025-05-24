@@ -8,7 +8,7 @@ use crate::{
 use dot_vox::{Color, DotVoxData, Model, SceneNode, Size, Voxel};
 use nalgebra::Matrix3;
 use num_traits::Num;
-use std::{convert::From, hash::Hash};
+use std::{convert::From, hash::Hash, path::Path};
 
 #[cfg(feature = "serialization")]
 use serde::{de::DeserializeOwned, Serialize};
@@ -210,6 +210,7 @@ fn iterate_vox_tree<F: FnMut(&Model, &V3c<i32>, &Matrix3<i8>)>(
 
 impl MIPMapStrategy {
     pub fn load_vox_file<
+        P: AsRef<Path>,
         #[cfg(all(feature = "bytecode", feature = "serialization"))] T: FromBencode
             + ToBencode
             + Serialize
@@ -289,9 +290,16 @@ impl<
 
     /// Loads data from the given filename
     /// * `returns` - (file_data, voxel_minimum_position_lyup, voxel_maximum_position_lyup)
-    pub(crate) fn load_vox_file_internal(filename: &str) -> (DotVoxData, V3c<i32>, V3c<i32>) {
-        let vox_tree =
-            dot_vox::load(filename).expect("Expected file {filename} to be a valid .vox file!");
+    pub(crate) fn load_vox_file_internal<P: AsRef<Path>>(
+        filename: P,
+    ) -> (DotVoxData, V3c<i32>, V3c<i32>) {
+        let vox_tree = dot_vox::load(
+            filename
+                .as_ref()
+                .to_str()
+                .expect("Expected {filename} to be interpreted as `&str`!"),
+        )
+        .expect("Expected file {filename} to be a valid .vox file!");
 
         let mut min_position_rzup = V3c::<i32>::new(i32::MAX, i32::MAX, i32::MAX);
         let mut max_position_rzup = V3c::<i32>::new(i32::MIN, i32::MIN, i32::MIN);

@@ -185,6 +185,9 @@ pub(crate) fn handle_resolution_updates(
     server: Res<AssetServer>,
 ) {
     if let Some(viewset) = viewset {
+        if 0 == viewset.views.len() {
+            return; // Nothing to do without views..
+        }
         let mut current_view = viewset.views[0].lock().unwrap();
         if current_view.new_resolution.is_some() {
             // see if a new output texture is loaded for the requested resolution yet

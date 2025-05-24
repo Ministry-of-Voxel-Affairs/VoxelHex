@@ -24,7 +24,7 @@ use crate::{
         Cube,
     },
 };
-use std::{collections::HashMap, hash::Hash};
+use std::{collections::HashMap, hash::Hash, path::Path};
 
 #[cfg(feature = "serialization")]
 use serde::{de::DeserializeOwned, Serialize};
@@ -159,7 +159,7 @@ impl<
 
     /// loads the data structure from the given file path
     #[cfg(feature = "bytecode")]
-    pub fn load(path: &str) -> Result<Self, std::io::Error> {
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, std::io::Error> {
         use std::fs::File;
         use std::io::Read;
         let mut file = File::open(path)?;

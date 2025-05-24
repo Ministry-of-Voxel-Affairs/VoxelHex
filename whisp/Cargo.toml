@@ -1,0 +1,18 @@
+[package]
+name = "whisp"
+version = "0.1.0"
+edition = "2024"
+authors = ["Dávid Tóth <toth.david.munka@gmail.com>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+voxelhex = { path = "../." }
+bevy = { version = "0.16.0", features = ["wayland"] }
+bevy_lunex = { version = "0.4.1" }
+bevy_pkv = "0.13.0"
+bevy_panorbit_camera = "0.26.0"
+serde = { version = "1", features = ["derive"] } # for custom structs in bevy_pkv
+
+[[bin]]
+name = "whisp"
+path = "src/main.rs"
