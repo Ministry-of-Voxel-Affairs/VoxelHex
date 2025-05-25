@@ -10,7 +10,7 @@ pub use crate::raytracing::bevy::types::{
 use crate::{
     boxtree::{Albedo, V3cf32, VoxelData},
     raytracing::bevy::{
-        data::{handle_gpu_readback, sync_with_main_world, write_to_gpu},
+        data::{handle_gpu_readback, sync_from_main_world, write_to_gpu},
         pipeline::prepare_bind_groups,
         types::{VhxLabel, VhxRenderNode, VhxRenderPipeline},
     },
@@ -29,7 +29,10 @@ use bevy::{
         Render, RenderApp, RenderSet,
     },
 };
-use std::hash::Hash;
+use std::{
+    hash::Hash,
+    sync::{RwLockReadGuard, RwLockWriteGuard, TryLockResult},
+};
 
 impl From<Vec4> for Albedo {
     fn from(vec: Vec4) -> Self {
@@ -49,6 +52,60 @@ impl From<Albedo> for Vec4 {
             color.b as f32 / 255.,
             color.a as f32 / 255.,
         )
+    }
+}
+
+impl VhxViewSet {
+    pub fn new() -> Self {
+        Self {
+            changed: true,
+            views: vec![],
+            resources: vec![],
+        }
+    }
+
+    /// Returns the number of views
+    pub fn len(&self) -> usize {
+        debug_assert_eq!(
+            self.views.len(),
+            self.resources.len(),
+            "Expected views and their resources to match in count"
+        );
+        self.views.len()
+    }
+
+    /// Provides a view for immutable access; Blocks until view is available
+    pub fn view(&self, index: usize) -> RwLockReadGuard<'_, BoxTreeGPUView> {
+        self.views[index]
+            .read()
+            .expect("Expected to be able to lock data view")
+    }
+
+    /// Tries to provide a view for immutable access; Fails if view is not available
+    pub fn try_view(&self, index: usize) -> TryLockResult<RwLockReadGuard<'_, BoxTreeGPUView>> {
+        self.views[index].try_read()
+    }
+
+    /// Provides a view for mutable access; Blocks until view is available
+    pub fn view_mut(&mut self, index: usize) -> RwLockWriteGuard<'_, BoxTreeGPUView> {
+        self.views[index]
+            .write()
+            .expect("Expected to be able to lock data view")
+    }
+
+    /// Tries to provide a view for mutable access; Fails if view is not available
+    pub fn try_view_mut(
+        &mut self,
+        index: usize,
+    ) -> TryLockResult<RwLockWriteGuard<'_, BoxTreeGPUView>> {
+        self.views[index].try_write()
+    }
+
+    /// Empties the viewset erasing all contained views
+    pub fn clear(&mut self) {
+        self.views.clear();
+        self.resources.clear();
+        self.changed = true;
     }
 }
 
@@ -180,15 +237,15 @@ pub(crate) fn create_depth_texture(
 }
 
 pub(crate) fn handle_resolution_updates(
-    viewset: Option<ResMut<VhxViewSet>>,
+    mut viewset: Option<ResMut<VhxViewSet>>,
     images: ResMut<Assets<Image>>,
     server: Res<AssetServer>,
 ) {
-    if let Some(viewset) = viewset {
+    if let Some(viewset) = viewset.as_mut() {
         if 0 == viewset.views.len() {
             return; // Nothing to do without views..
         }
-        let mut current_view = viewset.views[0].lock().unwrap();
+        let mut current_view = viewset.views[0].write().unwrap();
         if current_view.new_resolution.is_some() {
             // see if a new output texture is loaded for the requested resolution yet
             let new_out_tex = current_view
@@ -252,17 +309,14 @@ impl<
     > Plugin for RenderBevyPlugin<T>
 {
     fn build(&self, app: &mut App) {
-        app.add_plugins((
-            ExtractResourcePlugin::<BoxTreeGPUHost<T>>::default(),
-            ExtractResourcePlugin::<VhxViewSet>::default(),
-        ));
+        app.add_plugins((ExtractResourcePlugin::<BoxTreeGPUHost<T>>::default(),));
         app.add_systems(Update, handle_resolution_updates);
         let render_app = app.sub_app_mut(RenderApp);
-        render_app.add_systems(ExtractSchedule, sync_with_main_world);
+        render_app.add_systems(ExtractSchedule, sync_from_main_world);
         render_app.add_systems(
             Render,
             (
-                write_to_gpu::<T>.in_set(RenderSet::PrepareResources),
+                write_to_gpu::<T>.in_set(RenderSet::PrepareAssets),
                 prepare_bind_groups.in_set(RenderSet::PrepareBindGroups),
                 handle_gpu_readback.in_set(RenderSet::Cleanup),
             ),

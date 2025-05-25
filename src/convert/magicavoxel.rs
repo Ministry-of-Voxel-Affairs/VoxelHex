@@ -299,7 +299,16 @@ impl<
                 .to_str()
                 .expect("Expected {filename} to be interpreted as `&str`!"),
         )
-        .expect("Expected file {filename} to be a valid .vox file!");
+        .expect(
+            &format!(
+                "Expected file {:?} to be a valid .vox file!",
+                filename
+                    .as_ref()
+                    .to_str()
+                    .unwrap_or("path_name_conversion_failed")
+            )
+            .to_owned(),
+        );
 
         let mut min_position_rzup = V3c::<i32>::new(i32::MAX, i32::MAX, i32::MAX);
         let mut max_position_rzup = V3c::<i32>::new(i32::MIN, i32::MIN, i32::MIN);

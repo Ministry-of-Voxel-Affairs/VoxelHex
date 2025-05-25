@@ -1249,7 +1249,6 @@ fn test_clear_to_nothing() {
 
 #[test]
 fn test_clear_edge_case() {
-    std::env::set_var("RUST_BACKTRACE", "1");
     const TREE_SIZE: u32 = 64;
     const BRICK_DIMENSION: u32 = 16;
     let red: Albedo = 0xFF0000FF.into();
@@ -1338,7 +1337,6 @@ fn test_clear_at_lod_where_dim_is_1() {
 
 #[test]
 fn test_clear_at_lod_where_dim_is_2() {
-    std::env::set_var("RUST_BACKTRACE", "1");
     let albedo: Albedo = 0xFFAAEEFF.into();
     let mut tree: BoxTree = BoxTree::new(8, 2).ok().unwrap();
 

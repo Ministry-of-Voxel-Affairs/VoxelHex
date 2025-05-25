@@ -156,7 +156,7 @@ impl MIPResaplingFunction for MIPResamplingMethods {
                                         (new_albedo.a as f32).powf(2.),
                                     ));
                                 }
-                                (Some(ref mut current_avg_albedo), Some(new_albedo)) => {
+                                (Some(current_avg_albedo), Some(new_albedo)) => {
                                     entry_count += 1;
                                     current_avg_albedo.0 += (new_albedo.r as f32).powf(2.);
                                     current_avg_albedo.1 += (new_albedo.g as f32).powf(2.);

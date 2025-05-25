@@ -18,10 +18,10 @@ use bimap::BiHashMap;
 use std::{
     hash::Hash,
     ops::Range,
-    sync::{Arc, Mutex},
+    sync::{Arc, RwLock},
 };
 
-#[derive(Clone, ShaderType)]
+#[derive(Debug, Clone, ShaderType)]
 pub struct BoxTreeMetaData {
     /// Color of the ambient light in the render
     pub ambient_light_color: V3cf32,
@@ -86,10 +86,11 @@ where
     pub tree: BoxTree<T>,
 }
 
-#[derive(Default, Resource, Clone, TypePath, ExtractResource)]
+#[derive(Debug, Resource, Clone, TypePath, ExtractResource)]
 #[type_path = "shocovox::gpu::VhxViewSet"]
 pub struct VhxViewSet {
-    pub views: Vec<Arc<Mutex<BoxTreeGPUView>>>,
+    pub(crate) changed: bool,
+    pub(crate) views: Vec<Arc<RwLock<BoxTreeGPUView>>>,
     pub(crate) resources: Vec<Option<BoxTreeRenderDataResources>>,
 }
 
@@ -113,7 +114,7 @@ pub struct BoxTreeSpyGlass {
 }
 
 /// A View of an Octree
-#[derive(Resource, Clone)]
+#[derive(Debug, Resource, Clone)]
 pub struct BoxTreeGPUView {
     /// The camera for casting the rays
     pub spyglass: BoxTreeSpyGlass,
@@ -162,7 +163,7 @@ pub(crate) enum BrickOwnedBy {
     NodeAsMIP(u32),
 }
 
-#[derive(Resource, Clone)]
+#[derive(Debug, Resource, Clone)]
 pub struct BoxTreeGPUDataHandler {
     pub(crate) render_data: BoxTreeRenderData,
     pub(crate) victim_node: VictimPointer,
@@ -172,7 +173,7 @@ pub struct BoxTreeGPUDataHandler {
     pub(crate) uploaded_color_palette_size: usize,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct BoxTreeRenderDataResources {
     pub(crate) render_stage_prepass_bind_group: BindGroup,
     pub(crate) render_stage_main_bind_group: BindGroup,
@@ -229,7 +230,7 @@ pub(crate) struct CacheUpdatePackage<'a> {
     pub(crate) modified_usage_range: Range<usize>,
 }
 
-#[derive(Clone, TypePath)]
+#[derive(Debug, Clone, TypePath)]
 #[type_path = "shocovox::gpu::ShocoVoxRenderData"]
 pub struct BoxTreeRenderData {
     /// CPU only field, contains stored MIP feature enabled state
@@ -307,7 +308,6 @@ pub(crate) struct RenderStageData {
 
 #[derive(Resource)]
 pub(crate) struct VhxRenderPipeline {
-    pub update_tree: bool,
     pub(crate) render_queue: RenderQueue,
     pub(crate) update_pipeline: CachedComputePipelineId,
     pub(crate) render_stage_bind_group_layout: BindGroupLayout,

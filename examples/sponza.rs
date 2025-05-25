@@ -10,12 +10,12 @@ use voxelhex::{
     raytracing::{BoxTreeGPUHost, Ray, VhxViewSet, Viewport},
 };
 
-#[cfg(feature = "bevy_wgpu")]
-use iyes_perf_ui::{
-    entries::diagnostics::{PerfUiEntryFPS, PerfUiEntryFPSWorst},
-    ui::root::PerfUiRoot,
-    PerfUiPlugin,
-};
+// #[cfg(feature = "bevy_wgpu")]
+// use iyes_perf_ui::{
+//     entries::diagnostics::{PerfUiEntryFPS, PerfUiEntryFPSWorst},
+//     ui::root::PerfUiRoot,
+//     PerfUiPlugin,
+// };
 
 #[cfg(feature = "bevy_wgpu")]
 use image::{ImageBuffer, Rgb};
@@ -40,12 +40,12 @@ fn main() {
                 ..default()
             }),
             voxelhex::raytracing::RenderBevyPlugin::<u32>::new(),
-            bevy::diagnostic::FrameTimeDiagnosticsPlugin,
-            PanOrbitCameraPlugin,
-            PerfUiPlugin,
+            bevy::diagnostic::FrameTimeDiagnosticsPlugin::default(),
+            // PanOrbitCameraPlugin,
+            // PerfUiPlugin,
         ))
         .add_systems(Startup, setup)
-        .add_systems(Update, set_viewport_for_camera)
+        // .add_systems(Update, set_viewport_for_camera)
         .add_systems(Update, handle_zoom)
         .run();
 }
@@ -71,14 +71,14 @@ fn setup(mut commands: Commands, images: ResMut<Assets<Image>>) {
     }
 
     let mut host = BoxTreeGPUHost { tree };
-    let mut views = VhxViewSet::default();
+    let mut views = VhxViewSet::new();
     let view_index = host.create_new_view(
         &mut views,
         42,
         Viewport::new(
             V3c {
                 x: 0.,
-                y: 0.,
+                y: 300.,
                 z: 0.,
             },
             V3c {
@@ -93,47 +93,41 @@ fn setup(mut commands: Commands, images: ResMut<Assets<Image>>) {
         images,
     );
     commands.insert_resource(host);
-    let mut display = Sprite::from_image(
-        views.views[view_index]
-            .lock()
-            .unwrap()
-            .output_texture()
-            .clone(),
-    );
+    let mut display = Sprite::from_image(views.view(view_index).output_texture().clone());
     display.custom_size = Some(Vec2::new(
         DISPLAY_RESOLUTION[0] as f32,
         DISPLAY_RESOLUTION[1] as f32,
     ));
     commands.spawn(display);
     commands.insert_resource(views);
-    commands.spawn((
-        Camera {
-            is_active: false,
-            ..default()
-        },
-        PanOrbitCamera {
-            focus: Vec3::new(0., 300., 0.),
-            ..default()
-        },
-    ));
+    // commands.spawn((
+    //     Camera {
+    //         is_active: false,
+    //         ..default()
+    //     },
+    //     PanOrbitCamera {
+    //         focus: Vec3::new(0., 300., 0.),
+    //         ..default()
+    //     },
+    // ));
     commands.spawn(Camera2d::default());
-    commands.spawn((
-        PerfUiRoot::default(),
-        PerfUiEntryFPS {
-            label: "Frame Rate (current)".into(),
-            threshold_highlight: Some(60.0),
-            digits: 5,
-            precision: 2,
-            ..default()
-        },
-        PerfUiEntryFPSWorst {
-            label: "Frame Rate (worst)".into(),
-            threshold_highlight: Some(60.0),
-            digits: 5,
-            precision: 2,
-            ..default()
-        },
-    ));
+    // commands.spawn((
+    //     PerfUiRoot::default(),
+    //     PerfUiEntryFPS {
+    //         label: "Frame Rate (current)".into(),
+    //         threshold_highlight: Some(60.0),
+    //         digits: 5,
+    //         precision: 2,
+    //         ..default()
+    //     },
+    //     PerfUiEntryFPSWorst {
+    //         label: "Frame Rate (worst)".into(),
+    //         threshold_highlight: Some(60.0),
+    //         digits: 5,
+    //         precision: 2,
+    //         ..default()
+    //     },
+    // ));
 }
 
 #[cfg(feature = "bevy_wgpu")]
@@ -152,26 +146,26 @@ fn direction_from_cam(cam: &PanOrbitCamera) -> Option<V3cf32> {
     }
 }
 
-#[cfg(feature = "bevy_wgpu")]
-fn set_viewport_for_camera(camera_query: Query<&mut PanOrbitCamera>, view_set: ResMut<VhxViewSet>) {
-    let cam = camera_query.single();
-    if let Some(_) = cam.radius {
-        let mut tree_view = view_set.views[0].lock().unwrap();
-        tree_view.spyglass.viewport_mut().origin = V3c::new(cam.focus.x, cam.focus.y, cam.focus.z);
-        tree_view.spyglass.viewport_mut().direction = direction_from_cam(cam).unwrap();
-    }
-}
+// #[cfg(feature = "bevy_wgpu")]
+// fn set_viewport_for_camera(camera_query: Query<&mut PanOrbitCamera>, view_set: ResMut<VhxViewSet>) {
+//     let cam = camera_query.single();
+//     if let Some(_) = cam.radius {
+//         let mut tree_view = view_set.views[0].lock().unwrap();
+//         tree_view.spyglass.viewport_mut().origin = V3c::new(cam.focus.x, cam.focus.y, cam.focus.z);
+//         tree_view.spyglass.viewport_mut().direction = direction_from_cam(cam).unwrap();
+//     }
+// }
 
 #[cfg(feature = "bevy_wgpu")]
 fn handle_zoom(
     keys: Res<ButtonInput<KeyCode>>,
     tree: ResMut<BoxTreeGPUHost>,
-    view_set: ResMut<VhxViewSet>,
+    mut view_set: ResMut<VhxViewSet>,
     mut images: ResMut<Assets<Image>>,
-    mut camera_query: Query<&mut PanOrbitCamera>,
+    // mut camera_query: Query<&mut PanOrbitCamera>,
     mut sprite_query: Query<&mut Sprite>,
 ) {
-    let mut tree_view = view_set.views[0].lock().unwrap();
+    let mut tree_view = view_set.view_mut(0);
 
     if keys.pressed(KeyCode::Tab) {
         // Render the current view with CPU
@@ -237,13 +231,13 @@ fn handle_zoom(
         tree_view.spyglass.viewport_mut().fov *= 1. - 0.09;
     }
 
-    let mut cam = camera_query.single_mut();
-    if keys.pressed(KeyCode::ShiftLeft) {
-        cam.target_focus.y += 1.;
-    }
-    if keys.pressed(KeyCode::ControlLeft) {
-        cam.target_focus.y -= 1.;
-    }
+    // let mut cam = camera_query.single_mut();
+    // if keys.pressed(KeyCode::ShiftLeft) {
+    //     cam.target_focus.y += 1.;
+    // }
+    // if keys.pressed(KeyCode::ControlLeft) {
+    //     cam.target_focus.y -= 1.;
+    // }
 
     // if keys.pressed(KeyCode::NumpadAdd) {
     //     tree_view.view_frustum_mut().z *= 1.01;
@@ -255,41 +249,41 @@ fn handle_zoom(
         println!("{:?}", tree_view.spyglass.viewport());
     }
 
-    const RESOLUTION_DELTA: f32 = 0.1;
-    if keys.just_pressed(KeyCode::NumpadAdd) {
-        let res = tree_view.resolution();
-        let new_res = [
-            (res[0] as f32 * (1. + RESOLUTION_DELTA)) as u32,
-            (res[1] as f32 * (1. + RESOLUTION_DELTA)) as u32,
-        ];
-        sprite_query.single_mut().image = tree_view.set_resolution(new_res, &mut images);
-    }
-    if keys.just_pressed(KeyCode::NumpadSubtract) {
-        let res = tree_view.resolution();
-        let new_res = [
-            (res[0] as f32 * (1. - RESOLUTION_DELTA)).max(4.) as u32,
-            (res[1] as f32 * (1. - RESOLUTION_DELTA)).max(3.) as u32,
-        ];
-        sprite_query.single_mut().image = tree_view.set_resolution(new_res, &mut images);
-    }
+    // const RESOLUTION_DELTA: f32 = 0.1;
+    // if keys.just_pressed(KeyCode::NumpadAdd) {
+    //     let res = tree_view.resolution();
+    //     let new_res = [
+    //         (res[0] as f32 * (1. + RESOLUTION_DELTA)) as u32,
+    //         (res[1] as f32 * (1. + RESOLUTION_DELTA)) as u32,
+    //     ];
+    //     sprite_query.single_mut().image = tree_view.set_resolution(new_res, &mut images);
+    // }
+    // if keys.just_pressed(KeyCode::NumpadSubtract) {
+    //     let res = tree_view.resolution();
+    //     let new_res = [
+    //         (res[0] as f32 * (1. - RESOLUTION_DELTA)).max(4.) as u32,
+    //         (res[1] as f32 * (1. - RESOLUTION_DELTA)).max(3.) as u32,
+    //     ];
+    //     sprite_query.single_mut().image = tree_view.set_resolution(new_res, &mut images);
+    // }
 
-    if let Some(_) = cam.radius {
-        let dir = direction_from_cam(&cam).unwrap();
-        let dir = Vec3::new(dir.x, dir.y, dir.z);
-        let right = dir.cross(Vec3::new(0., 1., 0.));
-        if keys.pressed(KeyCode::KeyW) {
-            cam.target_focus += dir;
-        }
-        if keys.pressed(KeyCode::KeyS) {
-            cam.target_focus -= dir;
-        }
-        if keys.pressed(KeyCode::KeyA) {
-            cam.target_focus += right;
-        }
-        if keys.pressed(KeyCode::KeyD) {
-            cam.target_focus -= right;
-        }
-    }
+    // if let Some(_) = cam.radius {
+    //     let dir = direction_from_cam(&cam).unwrap();
+    //     let dir = Vec3::new(dir.x, dir.y, dir.z);
+    //     let right = dir.cross(Vec3::new(0., 1., 0.));
+    //     if keys.pressed(KeyCode::KeyW) {
+    //         cam.target_focus += dir;
+    //     }
+    //     if keys.pressed(KeyCode::KeyS) {
+    //         cam.target_focus -= dir;
+    //     }
+    //     if keys.pressed(KeyCode::KeyA) {
+    //         cam.target_focus += right;
+    //     }
+    //     if keys.pressed(KeyCode::KeyD) {
+    //         cam.target_focus -= right;
+    //     }
+    // }
 }
 
 #[cfg(not(feature = "bevy_wgpu"))]

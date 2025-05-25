@@ -8,7 +8,7 @@ use crate::raytracing::bevy::{
     },
 };
 use bevy::{
-    asset::AssetServer,
+    asset::{AssetLoadError, AssetServer},
     ecs::{
         system::{Res, ResMut},
         world::{FromWorld, World},
@@ -36,10 +36,12 @@ impl FromWorld for VhxRenderPipeline {
             spyglass_bind_group_layout,
             render_data_bind_group_layout,
         ) = create_bind_group_layouts(render_device);
-        let shader = world.resource::<AssetServer>().add(Shader::from_wgsl(
-            include_str!("viewport_render.wgsl"),
-            file!(),
-        ));
+        let shader = world.resource::<AssetServer>().add_async(async move {
+            Ok::<Shader, AssetLoadError>(Shader::from_wgsl(
+                include_str!("viewport_render.wgsl"),
+                file!(),
+            ))
+        });
         let pipeline_cache = world.resource::<PipelineCache>();
         let update_pipeline = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
             zero_initialize_workgroup_memory: false,
@@ -57,7 +59,6 @@ impl FromWorld for VhxRenderPipeline {
 
         VhxRenderPipeline {
             render_queue: world.resource::<RenderQueue>().clone(),
-            update_tree: true,
             render_stage_bind_group_layout,
             spyglass_bind_group_layout,
             render_data_bind_group_layout,
@@ -97,14 +98,14 @@ impl render_graph::Node for VhxRenderNode {
         world: &World,
     ) -> Result<(), render_graph::NodeRunError> {
         if let (Some(vhx_pipeline), Some(viewset)) = (
-            world.get_resource::<VhxRenderPipeline>(),
-            world.get_resource::<VhxViewSet>(),
+            world.get_resource::<VhxRenderPipeline>().as_mut(),
+            world.get_resource::<VhxViewSet>().as_mut(),
         ) {
             if 0 == viewset.views.len() {
                 return Ok(()); // Nothing to do without views..
             }
 
-            let current_view = viewset.views[0].lock().unwrap();
+            let current_view = viewset.views[0].read().unwrap();
             let resources = viewset.resources[0].as_ref();
 
             if self.ready && resources.is_some() {
@@ -289,34 +290,39 @@ fn create_view_resources(
 pub(crate) fn prepare_bind_groups(
     gpu_images: Res<RenderAssets<GpuImage>>,
     render_device: Res<RenderDevice>,
-    pipeline: Option<ResMut<VhxRenderPipeline>>,
-    viewset: Option<ResMut<VhxViewSet>>,
+    mut pipeline: Option<ResMut<VhxRenderPipeline>>,
+    mut viewset: Option<ResMut<VhxViewSet>>,
 ) {
-    if let (Some(mut pipeline), Some(mut viewset)) = (pipeline, viewset) {
+    if let (Some(mut pipeline), Some(viewset)) = (pipeline.as_mut(), viewset.as_mut()) {
         if 0 == viewset.views.len() {
             return; // Nothing to do without views..
         }
-        if !viewset.views[0].lock().unwrap().rebuild && !pipeline.update_tree {
+
+        let (should_rebuild, should_refresh) = {
+            let view = viewset.views[0].read().unwrap();
+            (
+                (view.rebuild || viewset.resources[0].is_none()),
+                view.rebuild
+                    && viewset.resources[0].is_some()
+                    && view.new_output_texture.is_some()
+                    && gpu_images
+                        .get(view.new_output_texture.as_ref().unwrap())
+                        .is_some()
+                    && view.spyglass.output_texture == *view.new_output_texture.as_ref().unwrap()
+                    && view.new_depth_texture.is_some()
+                    && gpu_images
+                        .get(view.new_depth_texture.as_ref().unwrap())
+                        .is_some()
+                    && view.spyglass.depth_texture == *view.new_depth_texture.as_ref().unwrap(),
+            )
+        };
+
+        if !should_rebuild && !should_refresh {
             return;
         }
 
-        // Rebuild view for texture updates
-        let can_rebuild = {
-            let view = viewset.views[0].lock().unwrap();
-            view.rebuild
-                && view.new_output_texture.is_some()
-                && gpu_images
-                    .get(view.new_output_texture.as_ref().unwrap())
-                    .is_some()
-                && view.spyglass.output_texture == *view.new_output_texture.as_ref().unwrap()
-                && view.new_depth_texture.is_some()
-                && gpu_images
-                    .get(view.new_depth_texture.as_ref().unwrap())
-                    .is_some()
-                && view.spyglass.depth_texture == *view.new_depth_texture.as_ref().unwrap()
-        };
-
-        if can_rebuild {
+        // Refresh view because of texture updates
+        if should_refresh {
             let (
                 spyglass_bind_group,
                 viewport_buffer,
@@ -325,7 +331,7 @@ pub(crate) fn prepare_bind_groups(
             ) = create_spyglass_bind_group(
                 &mut pipeline,
                 &render_device,
-                &viewset.views[0].lock().unwrap(),
+                &viewset.views[0].write().unwrap(),
             );
 
             // Update View resources
@@ -334,7 +340,7 @@ pub(crate) fn prepare_bind_groups(
                     &gpu_images,
                     &mut pipeline,
                     &render_device,
-                    &viewset.views[0].lock().unwrap(),
+                    &viewset.views[0].write().unwrap(),
                 );
 
             let view_resources = viewset.resources[0].as_mut().unwrap();
@@ -346,7 +352,7 @@ pub(crate) fn prepare_bind_groups(
             view_resources.readable_node_requests_buffer = readable_node_requests_buffer;
 
             // Update view to clear temporary objects
-            let mut view = viewset.views[0].lock().unwrap();
+            let mut view = viewset.views[0].write().unwrap();
             view.new_output_texture = None;
             view.new_depth_texture = None;
             view.rebuild = false;
@@ -355,7 +361,7 @@ pub(crate) fn prepare_bind_groups(
 
         // build everything from the ground up
         if let Some(resources) = &viewset.resources[0] {
-            let tree_view = &viewset.views[0].lock().unwrap();
+            let tree_view = &viewset.views[0].write().unwrap();
             let render_data = &tree_view.data_handler.render_data;
 
             let mut buffer = UniformBuffer::new(Vec::<u8>::new());
@@ -418,11 +424,11 @@ pub(crate) fn prepare_bind_groups(
                 &mut pipeline,
                 render_device,
                 gpu_images,
-                &viewset.views[0].lock().unwrap(),
+                &viewset.views[0].read().unwrap(),
             );
             viewset.resources[0] = Some(view_resources);
         }
 
-        pipeline.update_tree = false;
+        viewset.views[0].write().unwrap().rebuild = false;
     }
 }

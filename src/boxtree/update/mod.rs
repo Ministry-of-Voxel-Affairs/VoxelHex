@@ -246,7 +246,7 @@ impl<
                     }
                 }
             }
-            NodeContent::UniformLeaf(ref mut mat) => {
+            NodeContent::UniformLeaf(mat) => {
                 match mat {
                     BrickData::Empty => {
                         debug_assert_eq!(
