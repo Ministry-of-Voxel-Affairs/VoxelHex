@@ -39,10 +39,17 @@ pub(crate) struct ModelLoadAnimationState {
     spread: f32,
 }
 
+#[derive(Resource, Default)]
+struct FpsHistory {
+    values: Vec<f64>,
+}
+
 pub(crate) fn update_performance_stats(
     time: Res<Time>,
     diagnostics: Res<DiagnosticsStore>,
     mut performance_text: Query<(&mut Text2d, &Visibility, &Performance)>,
+    mut history: ResMut<FpsHistory>,
+    state: Res<FpsGraphState>,
 ) {
     let (mut performance_text, visibility, _) = performance_text
         .single_mut()
@@ -60,6 +67,16 @@ pub(crate) fn update_performance_stats(
             1000. / frametime_value,
             frametime_value
         );
+    }
+
+    if state.capturing {
+        if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
+        if let Some(value) = fps.smoothed() {
+            if history.values.len() >= state.capture_count {
+                history.values.remove(0);
+            }
+            history.values.push(value);
+        }
     }
 }
 
@@ -830,5 +847,59 @@ pub(crate) fn update(
     if keys.just_pressed(KeyCode::Digit0) {
         (progressbar_size.x, progressbar_transform.translation.x) =
             progressbar_xtrinsics_fn(0., loading_panel_size);
+    }
+}
+
+fn fps_graph_system(
+    mut contexts: Query<(&mut EguiContext, &Camera)>,
+    history: Res<FpsHistory>,
+    mut state: ResMut<FpsGraphState>,
+) {
+    for (mut context, camera) in contexts.iter_mut() {
+        if camera.order == 2 {
+            let ctx = context.get_mut();
+            egui::Window::new("Performance Graph").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut state.capturing, "Capture Data");
+                    ui.add(
+                        egui::Slider::new(&mut state.capture_count, 1..=100000)
+                            .text("History Length"),
+                    );
+                });
+
+                let (avg_fps, avg_ms) = if !history.values.is_empty() {
+                    let sum: f64 = history.values.iter().sum();
+                    let avg = sum / history.values.len() as f64;
+                    (avg, 1000.0 / avg)
+                } else {
+                    (0.0, 0.0)
+                };
+                ui.label(format!(
+                    "Average: {:.1} FPS ({:.2} ms)",
+                    avg_fps, avg_ms
+                ));
+                ui.separator();
+
+                let points: PlotPoints = history
+                    .values
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &fps)| [i as f64, 1000.0/fps])
+                    .collect();
+
+                let line = Line::new("ms", points);
+
+                Plot::new("ms_plot")
+                    .view_aspect(2.0)
+                    .allow_drag(false)
+                    .allow_zoom(false)
+                    .allow_scroll(false)
+                    .allow_boxed_zoom(false)
+                    .show(ui, |plot_ui| {
+                        plot_ui.line(line);
+                    });
+            });
+            return;
+        }
     }
 }

@@ -64,6 +64,7 @@ fn main() {
                 loader::handle_model_load_finished,
             ),
         )
+        .add_systems(EguiPrimaryContextPass, ui::behavior::fps_graph_system)
         .insert_resource(ui_state)
         .insert_resource(preferences)
         .insert_resource(VhxViewSet::new())
@@ -129,7 +130,7 @@ fn init_preferences_cache() -> PkvStore {
 fn setup(mut commands: Commands) {
     commands.spawn((
         bevy::prelude::Camera {
-            is_active: false,
+            is_active: true,
             ..default()
         },
         PanOrbitCamera {
@@ -137,10 +138,23 @@ fn setup(mut commands: Commands) {
             ..default()
         },
     ));
+
     commands.spawn((
-        Camera2d,
+        Camera {
+            order: 1,
+            ..default()
+        },
+        Camera2d::default(),
         UiSourceCamera::<0>,
-        Transform::from_translation(Vec3::Z * 1000.0),
         RenderLayers::from_layers(&[0, 1]),
     ));
-}
+
+    commands.spawn((
+        Camera {
+            order: 2,
+            ..default()
+        },
+        Camera2d::default(),
+        EguiContext::default(),
+    ));  // separate camera for egui to fix warning from bevy(multiple contexts cannot write to single camera)
+
