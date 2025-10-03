@@ -24,6 +24,7 @@ const COLOR_FOR_BRICK_REQUEST_SENT = vec3f(0.3,0.1,0.0);
 const COLOR_FOR_BRICK_REQUEST_FAIL = vec3f(0.6,0.0,0.0);
 const VHX_PREPASS_STAGE_ID = 1u;
 const VHX_RENDER_STAGE_ID = 2u;
+const MAX_RENDER_DISTANCE = 3.40282346638528859812e+38f;
 
 //crate::spatial::math::hash_region
 fn hash_region(offset: vec3f, size: f32) -> u32 {
@@ -85,7 +86,7 @@ fn cube_intersect_ray(cube: Cube, ray_origin: vec3f, ray_inv_dir: vec3f) -> Cube
 }
 
 //crate::raytracing::NodeStack
-const NODE_STACK_SIZE: u32 = 4;
+const NODE_STACK_SIZE: u32 = 2;
 const EMPTY_MARKER: u32 = 0xFFFFFFFFu;
 
 //crate::raytracing::NodeStack::push
@@ -334,7 +335,6 @@ fn probe_MIP(
     node_key: u32,
     node_bounds: ptr<function, Cube>,
     ray_scale_factors: vec3f,
-    max_distance: f32
 ) -> OctreeRayIntersection {
     if(node_mips[node_key] != EMPTY_MARKER) { // there is a valid mip present
         if(0 != (node_mips[node_key] & 0x80000000)) { // MIP brick is solid
@@ -351,7 +351,7 @@ fn probe_MIP(
                 ray, &brick_point,
                 node_mips[node_key] & 0x0000FFFF,
                 node_bounds, ray_scale_factors,
-                max_distance
+                MAX_RENDER_DISTANCE
             );
             if leaf_brick_hit.hit == true {
                 return OctreeRayIntersection(
@@ -468,7 +468,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32) -> OctreeRayInterse
             ){
                 var mip_hit = probe_MIP(
                     ray, ray_current_point, current_node_key, &current_bounds,
-                    ray_scale_factors, max_distance
+                    ray_scale_factors
                 );
                 if true == mip_hit.hit {
                     return mip_hit;
