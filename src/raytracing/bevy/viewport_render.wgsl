@@ -14,6 +14,7 @@ struct Cube {
     size: f32,
 }
 
+const EMPTY_MARKER: u32 = 0xFFFFFFFFu;
 const BOX_NODE_DIMENSION = 4u;
 const BOX_NODE_DIMENSION_SQUARED = 16u;
 const BOX_NODE_CHILDREN_COUNT = 64u;
@@ -85,65 +86,82 @@ fn cube_intersect_ray(cube: Cube, ray_origin: vec3f, ray_inv_dir: vec3f) -> Cube
     );
 }
 
+
+/// Node stack
+/// The node-stack stores 3 elements, forgetting the oldest element when a new one is pushed in.
+///
+/// Structure(MSB first):
+///  _===============================================================_
+/// | Byte 0-4                                                       |
+/// |----------------------------------------------------------------|
+/// | bit 0-9   | MSB of data at index 0                             |
+/// | bit 10-19 | MSB of data at index 1                             |
+/// | bit 20-29 | MSB of data at index 2                             |
+/// | bit 30-31 | stored items count within stack                    |
+/// |================================================================|
+/// | Byte 5-8                                                       |
+/// |----------------------------------------------------------------|
+/// | bit 0-9   | LSB of data at index 0                             |
+/// | bit 10-19 | LSB of data at index 1                             |
+/// | bit 20-29 | LSB of data at index 2                             |
+/// | bit 30-31 | index of the currently used head slot              |
+/// `================================================================`
+
 //crate::raytracing::NodeStack
-const NODE_STACK_SIZE: u32 = 2;
-const EMPTY_MARKER: u32 = 0xFFFFFFFFu;
+alias NodeStackData = array<u32, 2>;
 
 //crate::raytracing::NodeStack::push
-fn node_stack_push(
-    node_stack: ptr<function,array<u32, NODE_STACK_SIZE>>,
-    node_stack_meta: ptr<function, u32>,
-    data: u32,
-){
-    *node_stack_meta = (
-        // count
-        ( min(NODE_STACK_SIZE, ((*node_stack_meta & 0x000000FFu) + 1)) & 0x000000FFu)
-        // head_index
-        | ( ((
-            ( ((*node_stack_meta & 0x0000FF00u) >> 8u) + 1 ) % NODE_STACK_SIZE
-        ) << 8u) & 0x0000FF00u )
-    );
-    (*node_stack)[(*node_stack_meta & 0x0000FF00u) >> 8u] = data;
-}
+/// inserts the given node index into the stack
+fn node_stack_push(node_stack: ptr<function, NodeStackData>, data: u32) {
+    // Update head index value
+    var new_head_index = ((*node_stack)[1] & 0x3u);
+    new_head_index = select(new_head_index + 1u, 0u, new_head_index >= 2u);
 
-
-//crate::raytracing::NodeStack::pop
-fn node_stack_pop(
-    node_stack: ptr<function,array<u32, NODE_STACK_SIZE>>,
-    node_stack_meta: ptr<function, u32>,
-) -> u32 { // returns either with index or EMPTY_MARKER
-    if 0 == (*node_stack_meta & 0x000000FFu) {
-        return EMPTY_MARKER;
-    }
-    let result = (*node_stack)[(*node_stack_meta & 0x0000FF00u) >> 8u];
-    *node_stack_meta = select(
-        (
-            // count
-            ( ((*node_stack_meta & 0x000000FFu) - 1) )
-            // head_index
-            | ( ((
-                ( ((*node_stack_meta & 0x0000FF00u) >> 8u) - 1 )
-            ) << 8u) & 0x0000FF00u )
-        ),
-        (
-            // count
-            ( ((*node_stack_meta & 0x000000FFu) - 1) )
-            // head_index
-            | ((NODE_STACK_SIZE - 1) << 8u)
-        ),
-        0 == (*node_stack_meta & 0x0000FF00u) // head index is 0
+    let head_bit_pos = (new_head_index * 10u + 2u);
+    (*node_stack)[1] = (
+        ((*node_stack)[1] & ~((0x3FFu << head_bit_pos) | 0x3u)) // erase previous data
+        | ((data & 0x3FFu) << head_bit_pos) // add current data
+        | new_head_index // add new head index
     );
-    return result;
+
+    // Increase stored items count and update data on the new head
+    (*node_stack)[0] = (
+        ((*node_stack)[0] & ~((0x3FFu << head_bit_pos) | 0x3u )) // erase previous data
+        | (((data & 0x000FFC00) >> 10u) << head_bit_pos) // add current data
+        | min((((*node_stack)[0] & 0x3u) + 1), 3u) // add new stored items count
+    );
 }
 
 //crate::raytracing::NodeStack::last/last_mut
-fn node_stack_last(node_stack_meta: u32) -> u32 { // returns either with index or EMPTY_MARKER
-    return select(
-        (node_stack_meta & 0x0000FF00u) >> 8u,
-        EMPTY_MARKER,
-        0 == (node_stack_meta & 0x000000FFu)
+/// returns with node index stored at the top of the stack, or empty marker
+fn node_stack_last(node_stack: ptr<function, NodeStackData>) -> u32 {
+    if 0 == ((*node_stack)[0] & 0x3u) {
+        return EMPTY_MARKER;
+    }
+    let head_index = (*node_stack)[1] & 0x3u;
+    let head_bit_pos = (head_index * 10u + 2u);
+    return (
+        (( ((*node_stack)[0] & (0x3FFu << head_bit_pos)) >> head_bit_pos ) << 10u)
+        | (((*node_stack)[1] & (0x3FFu << head_bit_pos)) >> head_bit_pos )
     );
 }
+
+//crate::raytracing::NodeStack::pop
+/// returns with node index stored at the top of the stack(and removes it), or empty marker
+fn node_stack_pop(node_stack: ptr<function, NodeStackData>) {
+    let count = (*node_stack)[0] & 0x3u;
+    if 0u == count {
+        return;
+    }
+
+    // set new count
+    (*node_stack)[0] = ( ((*node_stack)[0] & 0xFFFFFFFCu) | (count - 1u) );
+
+    // set new head index
+    let head_index = (*node_stack)[1] & 0x3u;
+    (*node_stack)[1] = ( ((*node_stack)[1] & 0xFFFFFFFCu) | select( head_index - 1u, 2u, 0u == head_index ) );
+}
+
 
 //crate::raytracing::dda_step_to_next_sibling
 fn dda_step_to_next_sibling(
@@ -383,8 +401,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32) -> OctreeRayInterse
         2.
     );
 
-    var node_stack: array<u32, NODE_STACK_SIZE>;
-    var node_stack_meta: u32 = 0;
+    var node_stack = NodeStackData();
     var ray_current_point = fma((*ray).direction, vec3f(start_distance), (*ray).origin);
     var current_bounds = Cube(vec3f(0.), boxtree_size);
     var current_node_metadata = 0u;
@@ -432,12 +449,12 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32) -> OctreeRayInterse
             vec3f(target_bounds.size / 2.)
         );
 
-        node_stack_push(&node_stack, &node_stack_meta, BOXTREE_ROOT_NODE_KEY);
+        node_stack_push(&node_stack, BOXTREE_ROOT_NODE_KEY);
         /*// +++ DEBUG +++
         var safety = 0;
         */// --- DEBUG ---
         while(
-            0 != (node_stack_meta & 0x000000FFu) //crate::raytracing::NodeStack::is_empty
+            0 != (node_stack[0] & 0x3u) //!crate::raytracing::NodeStack::is_empty
             && dot(ray_current_point - (*ray).origin, ray_current_point - (*ray).origin) < max_distance
         ) {
             /*// +++ DEBUG +++
@@ -531,7 +548,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32) -> OctreeRayInterse
                 || (0 != (current_node_metadata & 0x02u)) // node is uniform
             ) {
                 // POP
-                node_stack_pop(&node_stack, &node_stack_meta);
+                node_stack_pop(&node_stack);
                 target_bounds = current_bounds;
                 current_bounds.size *= f32(BOX_NODE_DIMENSION);
                 current_bounds.min_position -= current_bounds.min_position % current_bounds.size;
@@ -567,8 +584,8 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32) -> OctreeRayInterse
                 target_bounds.min_position += tmp_vec * target_bounds.size;
                 current_node_key = select(
                     current_node_key,
-                    node_stack[node_stack_last(node_stack_meta)],
-                    EMPTY_MARKER != node_stack_last(node_stack_meta),
+                    node_stack_last(&node_stack),
+                    EMPTY_MARKER != node_stack_last(&node_stack),
                 );
                 current_node_metadata = (
                     node_metadata[current_node_key / 16] >> (2 * (current_node_key % 16))
@@ -595,7 +612,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32) -> OctreeRayInterse
                     current_bounds.min_position
                 );
                 target_sectant_center = target_bounds.min_position + vec3f(target_bounds.size / 2.);
-                node_stack_push(&node_stack, &node_stack_meta, target_child_descriptor);
+                node_stack_push(&node_stack, target_child_descriptor);
             } else {
                 // ADVANCE
                 /*// +++ DEBUG +++
