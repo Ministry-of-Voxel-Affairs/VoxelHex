@@ -332,6 +332,8 @@ pub(crate) fn re_evaluate_view_size(view: &mut BoxTreeGPUView) {
         view.data_handler.bricks_in_view = new_brick_count;
     }
 
+    debug_assert!(bricks_needed_overall < 262143, "Requested number of bricks({bricks_needed_overall}) above what can be represented within GPU(18 bits per index: 262143)");
+    debug_assert!(nodes_needed_overall < 262143, "Requested number of nodes({nodes_needed_overall}) above what can be represented within GPU(18 bits per index: 262143)");
     debug_assert!(
         rebuild_nodes || rebuild_bricks,
         "Expected view to be too small while calling size evaluation!",
