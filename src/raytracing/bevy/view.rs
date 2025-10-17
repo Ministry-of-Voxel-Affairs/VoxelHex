@@ -18,8 +18,9 @@ use crate::{
 };
 use bevy::{
     asset::RenderAssetUsages,
+    color::Color,
     math::{Mat4, Vec3},
-    prelude::{Assets, Handle, Image, Res, ResMut, Vec4},
+    prelude::{Assets, ColorToComponents, Handle, Image, Res, ResMut, Vec4},
     render::{
         render_asset::RenderAssets,
         render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages},
@@ -74,16 +75,13 @@ impl<T: VoxelData> BoxTreeGPUHost<T> {
                 size: viewport.frustum.z,
             },
             render_data: BoxTreeRenderData {
+                sun_changed: true,
                 mips_enabled: tree.mip_map_strategy.is_enabled(),
                 boxtree_meta: BoxTreeMetaData {
                     boxtree_size: tree.boxtree_size,
                     tree_properties: boxtree_properties(tree),
-                    ambient_light_color: V3c::new(1., 1., 1.),
-                    ambient_light_position: V3c::new(
-                        tree.boxtree_size as f32,
-                        tree.boxtree_size as f32,
-                        tree.boxtree_size as f32,
-                    ),
+                    sun_color: V3c::new(0.6, 0.6, 0.5),
+                    sun_direction: V3c::new(0., 1., 0.),
                 },
                 node_metadata: vec![0; (nodes_in_view as f32 / 16.).ceil() as usize],
                 node_ocbits: vec![0; nodes_in_view * 2],
@@ -143,6 +141,30 @@ impl BoxTreeGPUView {
         self.data_handler.upload_targets.reset();
         self.data_handler.upload_state.bricks_to_upload.clear();
         self.reload = true;
+    }
+
+    /// Provides the global direction of the sun in the view
+    pub fn sun_direction(&self) -> V3cf32 {
+        self.data_handler.render_data.boxtree_meta.sun_direction
+    }
+
+    /// Sets the global direction of the sun in the view
+    pub fn set_sun_position(&mut self, direction: V3cf32) {
+        self.data_handler.render_data.boxtree_meta.sun_direction = direction.normalized();
+        self.data_handler.render_data.sun_changed = true;
+    }
+
+    /// Sets the color of the sun in the view
+    pub fn set_sun_color(&mut self, color: Color) {
+        self.data_handler.render_data.boxtree_meta.sun_color = color.to_linear().to_vec3().into();
+        self.data_handler.render_data.sun_changed = true;
+    }
+
+    /// Sets the direction and the color of the sun in the view
+    pub fn set_sun(&mut self, direction: V3cf32, color: Color) {
+        self.data_handler.render_data.boxtree_meta.sun_direction = direction.normalized();
+        self.data_handler.render_data.boxtree_meta.sun_color = color.to_linear().to_vec3().into();
+        self.data_handler.render_data.sun_changed = true;
     }
 
     /// Provides the handle to the output texture

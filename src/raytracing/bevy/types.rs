@@ -28,10 +28,10 @@ use std::{
 #[derive(Debug, Clone, ShaderType)]
 pub struct BoxTreeMetaData {
     /// Color of the ambient light in the render
-    pub ambient_light_color: V3cf32,
+    pub sun_color: V3cf32,
 
-    /// Position of the ambient light in the render
-    pub ambient_light_position: V3cf32,
+    /// Direction of the ambient light in the render
+    pub sun_direction: V3cf32,
 
     /// Size of the boxtree to display
     pub(crate) boxtree_size: u32,
@@ -203,6 +203,9 @@ pub(crate) struct BoxTreeRenderDataResources {
 #[derive(Debug, Clone, TypePath)]
 #[type_path = "shocovox::gpu::ShocoVoxRenderData"]
 pub(crate) struct BoxTreeRenderData {
+    /// CPU only field, helper variable to detect when the sun color or position have changed
+    pub(crate) sun_changed: bool,
+
     /// CPU only field, contains stored MIP feature enabled state
     pub(crate) mips_enabled: bool,
 
