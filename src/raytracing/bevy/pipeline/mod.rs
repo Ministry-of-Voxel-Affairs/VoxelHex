@@ -56,7 +56,7 @@ impl FromWorld for VhxRenderPipeline {
             push_constant_ranges: Vec::new(),
             shader,
             shader_defs: vec![],
-            entry_point: Cow::from("update"),
+            entry_point: Some(Cow::from("update")),
         });
 
         VhxRenderPipeline {

@@ -308,6 +308,6 @@ mod raytracing_tests {
             size: 2.0,
         };
         let hit = cube.intersect_ray(&ray).unwrap();
-        assert!(hit.impact_distance.is_some_and(|d| (d > 0.0)));
+        assert!(hit.impact_distance.is_some_and(|d| d > 0.0));
     }
 }

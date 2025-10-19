@@ -230,7 +230,7 @@ impl NodeData {
     }
 
     /// Provides a slice of child pointers, if there are children to iterate on
-    pub(crate) fn children_iter(&self) -> Option<std::slice::Iter<u32>> {
+    pub(crate) fn children_iter(&'_ self) -> Option<std::slice::Iter<'_, u32>> {
         match &self.children {
             NodeChildren::Children(c) => Some(c.iter()),
             _ => None,

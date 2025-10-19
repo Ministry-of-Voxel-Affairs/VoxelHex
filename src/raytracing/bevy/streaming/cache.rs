@@ -188,7 +188,7 @@ impl BoxTreeGPUDataHandler {
         // Iterate the buffer until either a node is found or the victim node loops back to itself
         let mut victim_node_index = (self.upload_state.victim_node + 1) % self.nodes_in_view;
         while victim_node_index != self.upload_state.victim_node {
-            // query if the node key of the potential node victim
+            // query the node key of the potential node victim
             let victim_node_key = self
                 .upload_targets
                 .node_key_vs_meta_index

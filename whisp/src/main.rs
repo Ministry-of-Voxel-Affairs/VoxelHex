@@ -3,7 +3,7 @@ mod ui;
 
 use crate::ui::input::CameraPosition;
 use bevy::{
-    diagnostic::FrameTimeDiagnosticsPlugin, prelude::*, render::view::RenderLayers,
+    camera::visibility::RenderLayers, diagnostic::FrameTimeDiagnosticsPlugin, prelude::*,
     window::WindowPlugin,
 };
 use bevy_lunex::prelude::*;

@@ -7,10 +7,10 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 voxelhex = { path = "../." }
-bevy = { version = "0.16.0", features = ["wayland"] }
-bevy_lunex = { version = "0.4.1" }
-bevy_pkv = "0.13.0"
-bevy_panorbit_camera = "0.26.0"
+bevy = { version = "0.17.0", features = ["wayland"] }
+bevy_lunex = { git = "https://github.com/bytestring-net/bevy_lunex.git" }
+bevy_pkv = "0.14.0"
+bevy_panorbit_camera = "0.29.0"
 serde = { version = "1", features = [
     "derive",
 ] } # for custom structs in bevy_pkv

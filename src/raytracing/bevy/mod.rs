@@ -25,7 +25,7 @@ use bevy::{
     prelude::{Commands, ExtractSchedule, FixedUpdate, Res, ResMut, Vec4},
     render::{
         extract_resource::ExtractResourcePlugin, render_graph::RenderGraph, Render, RenderApp,
-        RenderSet,
+        RenderSystems,
     },
     tasks::AsyncComputeTaskPool,
 };
@@ -316,8 +316,8 @@ impl<T: VoxelData> Plugin for RenderBevyPlugin<T> {
         render_app.add_systems(
             Render,
             (
-                upload::<T>.in_set(RenderSet::PrepareAssets),
-                prepare_bind_groups.in_set(RenderSet::PrepareBindGroups),
+                upload::<T>.in_set(RenderSystems::PrepareAssets),
+                prepare_bind_groups.in_set(RenderSystems::PrepareBindGroups),
                 handle_resolution_updates_render_world,
             ),
         );

@@ -19,7 +19,6 @@ enum ResolutionUpdated {
 }
 
 #[derive(Event)]
-#[event(auto_propagate)]
 pub(crate) struct OutputResolutionUpdated {
     by: ResolutionUpdated,
     from: u32,
@@ -27,7 +26,6 @@ pub(crate) struct OutputResolutionUpdated {
 }
 
 #[derive(Event)]
-#[event(auto_propagate)]
 pub(crate) struct SettingsChanged;
 
 #[derive(Debug, Resource)]
@@ -132,7 +130,7 @@ pub(crate) fn handle_model_load_animation(
 }
 
 pub(crate) fn settings_changed_observer(
-    _: Trigger<SettingsChanged>,
+    _: On<SettingsChanged>,
     ui_state: Res<UiState>,
     mut images: ResMut<Assets<Image>>,
     viewset: Option<ResMut<VhxViewSet>>,
@@ -159,7 +157,7 @@ pub(crate) fn settings_changed_observer(
 }
 
 fn fov_slider_observer(
-    mut mouse_move: Trigger<Pointer<Move>>,
+    mut mouse_move: On<Pointer<Move>>,
     mut ui_state: ResMut<UiState>,
     fov_slider: Query<(
         &UiAction,
@@ -212,7 +210,7 @@ fn fov_slider_observer(
 }
 
 pub(crate) fn resolution_changed_observer(
-    update: Trigger<OutputResolutionUpdated>,
+    update: On<OutputResolutionUpdated>,
     mut ui_state: ResMut<UiState>,
     mut output_width_button: Query<(
         Entity,
@@ -384,7 +382,7 @@ pub(crate) fn setup(
         .expect("Expected Camera Locked Button to be available in UI");
 
     commands.entity(camera_locked_button).observe(
-        move |_: Trigger<Pointer<Click>>,
+        move |_: On<Pointer<Click>>,
               mut ui_state: ResMut<UiState>,
               asset_server: Res<AssetServer>,
               mut camera_locked_icon: Query<(
@@ -411,7 +409,7 @@ pub(crate) fn setup(
         .single()
         .expect("Expected Output Resolution Linked Button to be available in UI");
     commands.entity(viewport_resolution_link_button).observe(
-        move |_: Trigger<Pointer<Click>>,
+        move |_: On<Pointer<Click>>,
               mut ui_state: ResMut<UiState>,
               asset_server: Res<AssetServer>,
               mut viewport_resolution_linked: Query<(
@@ -438,7 +436,7 @@ pub(crate) fn setup(
         .single()
         .expect("Expected Output Resolution Linked Button to be available in UI");
     commands.entity(output_resolution_link_button).observe(
-        move |_: Trigger<Pointer<Click>>,
+        move |_: On<Pointer<Click>>,
               mut ui_state: ResMut<UiState>,
               asset_server: Res<AssetServer>,
               mut output_resolution_linked: Query<(
@@ -465,7 +463,7 @@ pub(crate) fn setup(
         .single()
         .expect("Expected Open Shortcuts Panel Button to be available in UI");
     commands.entity(info_panel_button_mini).observe(
-        move |_: Trigger<Pointer<Click>>,
+        move |_: On<Pointer<Click>>,
               mut commands: Commands,
               mut pkv: ResMut<PkvStore>,
               mut ui_state: ResMut<UiState>,
@@ -494,7 +492,7 @@ pub(crate) fn setup(
         .single()
         .expect("Expected Close Shortcuts Panel Button to be available in UI");
     commands.entity(info_panel_button_expanded).observe(
-        move |_: Trigger<Pointer<Click>>,
+        move |_: On<Pointer<Click>>,
               mut commands: Commands,
               mut pkv: ResMut<PkvStore>,
               mut ui_state: ResMut<UiState>,
@@ -657,7 +655,7 @@ pub(crate) fn update(
     mut commands: Commands,
     mut ui_state: ResMut<UiState>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut motion: EventReader<MouseMotion>,
+    mut motion: MessageReader<MouseMotion>,
     mut output_resolution_width_update_button: Query<(
         &UiAction,
         &mut Text2d,

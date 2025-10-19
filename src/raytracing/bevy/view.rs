@@ -17,10 +17,11 @@ use crate::{
     spatial::Cube,
 };
 use bevy::{
+    asset::RenderAssetUsages,
     math::{Mat4, Vec3},
     prelude::{Assets, Handle, Image, Res, ResMut, Vec4},
     render::{
-        render_asset::{RenderAssetUsages, RenderAssets},
+        render_asset::RenderAssets,
         render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages},
         texture::GpuImage,
     },
@@ -163,9 +164,9 @@ impl BoxTreeGPUView {
             self.new_depth_texture = Some(create_depth_texture(resolution, images));
             self.rebuild = true;
             self.new_images_ready = false;
-            self.new_output_texture.as_ref().unwrap().clone_weak()
+            self.new_output_texture.as_ref().unwrap().clone()
         } else {
-            self.spyglass.output_texture.clone_weak()
+            self.spyglass.output_texture.clone()
         }
     }
 

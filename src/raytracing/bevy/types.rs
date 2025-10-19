@@ -219,7 +219,7 @@ pub(crate) struct BoxTreeRenderData {
     /// `================================================================`
     pub(crate) node_metadata: Vec<u32>,
 
-    /// Composite field: Children information
+    /// Composite field: Children information (18 bits per child)
     /// In case of Internal Nodes
     /// -----------------------------------------
     /// Index values for Nodes, 64 value per @SizedNode entry.
@@ -232,7 +232,7 @@ pub(crate) struct BoxTreeRenderData {
     /// Contains 64 bricks pointing to the child of the node for the relevant sectant
     /// according to @node_metadata ( Uniform/Non-uniform ) a node may have 1
     /// or 64 children, in that case only the first index is used.
-    /// Structure is as follows:
+    /// Structure is as follows(MSB first):
     ///  _===============================================================_
     /// | bit 0-30 | index of where the voxel brick starts               |
     /// |          | inside the @voxels_buffer(when parted)              |
