@@ -300,7 +300,7 @@ fn traverse_brick(
 
 struct OctreeRayIntersection {
     hit: bool,
-    albedo : vec4<f32>,
+    voxel_index: u32,
     impact_point: vec3f,
     impact_normal: vec3f,
 }
@@ -322,35 +322,34 @@ fn probe_brick(
             // Whole brick is solid, ray hits it at first connection
             return OctreeRayIntersection(
                 !is_empty(brick_descriptor),
-                color_palette[brick_descriptor & 0x0000FFFF], // Albedo is in color_palette, it's not a brick index in this case
+                brick_descriptor, // Albedo is in color_palette, it's not a brick index in this case
+                                  // which is signaled in the first (MSB) bit
                 *ray_current_point,
                 vec3f(0.,1.,0.) // see issue #11
             );
         } else { // brick is parted
             let leaf_brick_hit = traverse_brick(
                 ray, ray_current_point,
-                brick_descriptor & 0x0000FFFF,
+                brick_descriptor,
                 brick_bounds, ray_scale_factors,
                 max_distance
             );
 
             if stage_data.stage == VHX_PREPASS_STAGE_ID {
                 if leaf_brick_hit.hit == false && leaf_brick_hit.flat_index != 0 {
-                    return OctreeRayIntersection(true, vec4f(0.), *ray_current_point, vec3f(0., 0., 1.));
+                    return OctreeRayIntersection(true, 0u, *ray_current_point, vec3f(0., 0., 1.));
                 }
             }
 
             if leaf_brick_hit.hit == true {
                 return OctreeRayIntersection(
-                    true,
-                    color_palette[voxels[leaf_brick_hit.flat_index] & 0x0000FFFF],
-                    *ray_current_point,
+                    true, leaf_brick_hit.flat_index, *ray_current_point,
                     vec3f(0.,1.,0.) // see issue #11
                 );
             }
         }
     }
-    return OctreeRayIntersection(false, vec4f(0.), *ray_current_point, vec3f(0., 0., 1.));
+    return OctreeRayIntersection(false, 0u, *ray_current_point, vec3f(0., 0., 1.));
 }
 
 fn probe_MIP(
@@ -365,7 +364,8 @@ fn probe_MIP(
             // Whole brick is solid, ray hits it at first connection
             return OctreeRayIntersection(
                 !is_empty(node_mips[node_key]),
-                color_palette[node_mips[node_key] & 0x0000FFFF], // Albedo is in color_palette, it's not a brick index in this case
+                node_mips[node_key], // Albedo is in color_palette, it's not a brick index in this case
+                                     // which is signaled in the first (MSB) bit
                 ray_current_point,
                 vec3f(0.,1.,0.) // see issue #11
             );
@@ -379,15 +379,13 @@ fn probe_MIP(
             );
             if leaf_brick_hit.hit == true {
                 return OctreeRayIntersection(
-                    true,
-                    color_palette[voxels[leaf_brick_hit.flat_index] & 0x0000FFFF],
-                    brick_point,
+                    true, leaf_brick_hit.flat_index, brick_point,
                     vec3f(0.,1.,0.) // see issue #11
                 );
             }
         }
     }
-    return OctreeRayIntersection(false, vec4f(0.), ray_current_point, vec3f(0., 0., 1.));
+    return OctreeRayIntersection(false, 0u, ray_current_point, vec3f(0., 0., 1.));
 }
 
 var<workgroup> root_intersect: array<CubeRayIntersection, 64>; // 8 * 8 for the given workgroup sizes
@@ -446,9 +444,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
         /*// +++ DEBUG +++
         outer_safety += 1;
         if(f32(outer_safety) > boxtree_size * sqrt(3.)) {
-            return OctreeRayIntersection(
-                true, vec4f(1.,0.,0.,1.), vec3f(0.), vec3f(0., 0., 1.)
-            );
+            return OctreeRayIntersection(true, 0u, vec3f(0.), vec3f(0., 0., 1.));
         }
         */// --- DEBUG ---
         // Init with root node: index 0 with meta
@@ -475,14 +471,12 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
             /*// +++ DEBUG +++
             safety += 1;
             if(f32(safety) > boxtree_size * sqrt(30.)) {
-                return OctreeRayIntersection(
-                    true, vec4f(0.,0.,1.,1.), vec3f(0.), vec3f(0., 0., 1.)
-                );
+                return OctreeRayIntersection(true, 0u, vec3f(0.), vec3f(0., 0., 1.));
             }
             */// --- DEBUG ---
             tmp_vec = ray_current_point - (*ray).origin;
             if(stage_data.stage == VHX_PREPASS_STAGE_ID && dot(tmp_vec, tmp_vec) >= max_distance) {
-                return OctreeRayIntersection( false, vec4f(0.), ray_current_point, vec3f(0., 0., 1.) );
+                return OctreeRayIntersection(false, 0u, ray_current_point, vec3f(0., 0., 1.));
             }
 
             target_child_descriptor = node_children[
@@ -533,29 +527,6 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
                     max_distance
                 );
                 if hit.hit == true {
-                    /*// +++ DEBUG +++
-                    let relative_c_point = hit.impact_point - current_bounds.min_position;
-                    if (relative_c_point.x < 5. || relative_c_point.y < 5. || relative_c_point.z < 5.) {
-                        hit.albedo.b = 1.;
-                    }
-
-                    let bound_size_ratio = f32(target_bounds.size) / boxtree_size * 5.;
-                    if( // Display current bounds boundaries
-                        (abs(ray_current_point.x - target_bounds.min_position.x) < bound_size_ratio)
-                        ||(abs(ray_current_point.y - target_bounds.min_position.y) < bound_size_ratio)
-                        ||(abs(ray_current_point.z - target_bounds.min_position.z) < bound_size_ratio)
-                    ){
-                        hit.albedo -= 0.5;
-                    }
-
-                    if( // Display current bounds center
-                        (abs(ray_current_point.x - (current_bounds.min_position.x + (current_bounds.size / 2.))) < bound_size_ratio)
-                        ||(abs(ray_current_point.y - (current_bounds.min_position.y + (current_bounds.size / 2.))) < bound_size_ratio)
-                        ||(abs(ray_current_point.z - (current_bounds.min_position.z + (current_bounds.size / 2.))) < bound_size_ratio)
-                    ){
-                        hit.albedo += 0.5;
-                    }
-                    */// --- DEBUG ---
                     return hit;
                 }
             }
@@ -574,7 +545,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
                     stage_data.stage == VHX_PREPASS_STAGE_ID
                     && dot(ray_current_point - (*ray).origin, ray_current_point - (*ray).origin) >= max_distance
                 ) {
-                    return OctreeRayIntersection( false, vec4f(0.), ray_point_before_pop, vec3f(0., 0., 1.) );
+                    return OctreeRayIntersection(false, 0u, ray_point_before_pop, vec3f(0., 0., 1.));
                 }
                 target_sectant_center = fma(
                     tmp_vec, vec3f(target_bounds.size),
@@ -635,9 +606,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
                     /*// +++ DEBUG +++
                     advance_safety += 1;
                     if(advance_safety > 16) {
-                        return OctreeRayIntersection(
-                            true, vec4f(0.,1.,0.,1.), vec3f(0.), vec3f(0., 0., 1.)
-                        );
+                        return OctreeRayIntersection(true, 0u, vec3f(0.), vec3f(0., 0., 1.));
                     }
                     */// --- DEBUG ---
                     tmp_vec = round(dda_step_to_next_sibling((*ray).direction, &ray_current_point, &target_bounds, ray_scale_factors));
@@ -691,7 +660,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
             && all(ray_current_point > vec3f(0.))
         );
     } // while (ray inside root bounds)
-    return OctreeRayIntersection(false, vec4f(0.), ray_current_point, vec3f(0., 0., 1.));
+    return OctreeRayIntersection(false, 0u, ray_current_point, vec3f(0., 0., 1.));
 }
 
 alias PaletteIndexValues = u32;
@@ -808,7 +777,6 @@ fn update(
             )
         ).r;
 
-        var ray_result = get_by_ray(&ray, start_distance, ray_local_index);
         /*// +++ DEBUG +++
         var root_bounds = Cube(vec3(0.,0.,0.), f32(boxtree_meta_data.boxtree_size));
         let root_intersect = cube_intersect_ray(root_bounds, &ray, 1. / ray.direction);
@@ -831,7 +799,28 @@ fn update(
             rgb_result.b += 0.1; // Also color in the area of the boxtree
         }
         */// --- DEBUG ---
-        rgb_result = select(rgb_result, ray_result.albedo.rgb, ray_result.hit);
+        var primary_raycast = get_by_ray(&ray, start_distance, ray_local_index);
+
+        if(primary_raycast.hit){
+            // shadow ray: cast ray from impact point to lightsource
+            var shadow_ray = Line(primary_raycast.impact_point, boxtree_meta_data.sun_direction);
+
+            // start shadow raycast from inside the voxel to avoid self-intersection
+            var shadow_raycast = get_by_ray(&shadow_ray, 0.1, ray_local_index);
+            var shadow_modifier = clamp(( // the farther away the hit is, the less the hard shadow is going to count
+                0.3 * length(shadow_raycast.impact_point - primary_raycast.impact_point)
+                / ( // hard shadows get softer when sunlight block is far away
+                    f32(boxtree_meta_data.tree_properties & 0x0000FFFF) * 4.
+                )
+            ), 0.3, 1.);
+
+            // If the shadow ray hits something, the point is in shadow
+            rgb_result = select(
+                vec3f(0.),
+                color_palette[voxels[primary_raycast.voxel_index] & 0x0000FFFF].rgb * shadow_modifier,
+                primary_raycast.hit
+            );
+        }
 
         textureStore(output_texture, vec2u(invocation_id.xy), vec4f(rgb_result, 1.));
     }
