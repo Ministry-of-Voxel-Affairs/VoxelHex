@@ -243,14 +243,14 @@ where
         }
     }
 
-    pub(crate) fn get(&self, key: usize) -> RwLockReadGuard<T> {
+    pub(crate) fn get(&'_ self, key: usize) -> RwLockReadGuard<'_, T> {
         debug_assert!(self.key_is_valid(key));
         self.buffer[key]
             .read()
             .expect("Expected to be able to read ReusableItem in Object pool")
     }
 
-    pub(crate) fn get_mut(&mut self, key: usize) -> RwLockWriteGuard<T> {
+    pub(crate) fn get_mut(&'_ mut self, key: usize) -> RwLockWriteGuard<'_, T> {
         debug_assert!(self.key_is_valid(key));
         self.buffer[key]
             .write()

@@ -97,7 +97,7 @@ fn load_task_from_path(path: &Path, confirmed: bool) -> TreeLoadingTask {
 
 pub(crate) fn observe_file_drop(
     mut commands: Commands,
-    mut evr_dnd: EventReader<FileDragAndDrop>,
+    mut evr_dnd: MessageReader<FileDragAndDrop>,
     mut tree_factory: Option<ResMut<TreeLoadingTask>>,
     mut status_text: Query<(&mut Text2d, &mut UiColor, &Model, &Loading)>,
 ) {

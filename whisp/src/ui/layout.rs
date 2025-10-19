@@ -56,7 +56,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                     crate::ui::components::Model,
                                     crate::ui::components::Container,
                                     UiLayout::window()
-                                        .anchor(Anchor::TopLeft)
+                                        .anchor(Anchor::TOP_LEFT)
                                         .pos(Ab((5., 5.)))
                                         .size(Ab((768.0, 32.0)))
                                         .pack(),
@@ -76,7 +76,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                         crate::ui::components::Model,
                                         crate::ui::components::Info,
                                         UiLayout::window()
-                                        .anchor(Anchor::TopLeft)
+                                        .anchor(Anchor::TOP_LEFT)
                                         .pos(Ab((0., 0.)))
                                         .size(Ab((768.0, 32.0)))
                                         .pack(),
@@ -98,7 +98,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                             ui_model_panel
                                 .spawn((
                                     UiLayout::window()
-                                        .anchor(Anchor::TopLeft)
+                                        .anchor(Anchor::TOP_LEFT)
                                         .pos(Ab((5., 40.)))
                                         .size(Ab((200.0, 32.0)))
                                         .pack(),
@@ -142,7 +142,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                             ..default()
                                         },
                                         UiLayout::window()
-                                            .anchor(Anchor::TopLeft)
+                                            .anchor(Anchor::TOP_LEFT)
                                             .pos(Ab((35., 8.)))
                                             .size(Ab((55.0, 18.0)))
                                             .pack(),
@@ -159,7 +159,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                     ));
                                     ui_resolution_panel.spawn((
                                         UiLayout::window()
-                                            .anchor(Anchor::TopLeft)
+                                            .anchor(Anchor::TOP_LEFT)
                                             .pos(Ab((100., 7.)))
                                             .size(Ab((15.0, 18.0)))
                                             .pack(),
@@ -177,7 +177,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                             ..default()
                                         },
                                         UiLayout::window()
-                                            .anchor(Anchor::TopLeft)
+                                            .anchor(Anchor::TOP_LEFT)
                                             .pos(Ab((125., 8.)))
                                             .size(Ab((55.0, 20.0)))
                                             .pack(),
@@ -205,7 +205,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                     crate::ui::components::Performance,
                                     crate::ui::components::Container,
                                     UiLayout::window()
-                                        .anchor(Anchor::TopLeft)
+                                        .anchor(Anchor::TOP_LEFT)
                                         .pos(Ab((210., 40.)))
                                         .size(Ab((200.0, 32.0)))
                                         .pack(),
@@ -219,7 +219,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                     ui_performance_panel.spawn((
                                         crate::ui::components::Performance,
                                         UiLayout::window()
-                                            .anchor(Anchor::TopLeft)
+                                            .anchor(Anchor::TOP_LEFT)
                                             .pos(Ab((25., 5.)))
                                             .size(Ab((150.0, 30.0)))
                                             .pack(),
@@ -232,7 +232,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                             ui_model_panel
                                 .spawn((
                                     UiLayout::window()
-                                        .anchor(Anchor::TopLeft)
+                                        .anchor(Anchor::TOP_LEFT)
                                         .pos(Ab((415., 40.)))
                                         .size(Ab((200.0, 32.0)))
                                         .pack(),
@@ -248,7 +248,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                         crate::ui::components::Version,
                                         crate::ui::components::Info,
                                         UiLayout::window()
-                                            .anchor(Anchor::TopLeft)
+                                            .anchor(Anchor::TOP_LEFT)
                                             .pos(Ab((15., 5.)))
                                             .size(Ab((165.0, 20.0)))
                                             .pack(),
@@ -260,7 +260,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                             // G to hide text
                             ui_model_panel.spawn((
                                 UiLayout::window()
-                                    .anchor(Anchor::TopLeft)
+                                    .anchor(Anchor::TOP_LEFT)
                                     .pos(Ab((620., 45.)))
                                     .size(Ab((150.0, 25.0)))
                                     .pack(),
@@ -276,7 +276,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                     crate::ui::components::Slider,
                                     crate::ui::components::Container,
                                     UiLayout::window()
-                                        .anchor(Anchor::TopLeft)
+                                        .anchor(Anchor::TOP_LEFT)
                                         .pos(Ab((5., 75.)))
                                         .size(Ab((768.0, 25.0)))
                                         .pack(),
@@ -292,7 +292,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                         crate::ui::components::Loading,
                                         crate::ui::components::Slider,
                                         UiLayout::window()
-                                            .anchor(Anchor::TopLeft)
+                                            .anchor(Anchor::TOP_LEFT)
                                             .pos(Ab((0., 0.)))
                                             .size(Ab((0.0, 25.0)))
                                             .pack(),
@@ -308,7 +308,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                             UiLayout::window()
                                                 .pos(Ab(2.))
                                                 .size(Rl(100.) - Ab(2.))
-                                                .anchor(Anchor::TopLeft)
+                                                .anchor(Anchor::TOP_LEFT)
                                                 .pack(),
                                         )
                                         .with_children(|ui_loading_bar_padding| {
@@ -334,7 +334,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                             crate::ui::components::Camera,
                             crate::ui::components::Container,
                             UiLayout::window()
-                                .anchor(Anchor::TopRight)
+                                .anchor(Anchor::TOP_RIGHT)
                                 .x(Rl(100.) - Ab(5.))
                                 .y(Ab(5.))
                                 .size(Ab((400.0, 100.0)))
@@ -345,7 +345,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                         .with_children(|ui_camera_intrinsics_panel| {
                             ui_camera_intrinsics_panel.spawn((
                                 UiLayout::window()
-                                    .anchor(Anchor::TopLeft)
+                                    .anchor(Anchor::TOP_LEFT)
                                     .pos(Ab((5., 5.)))
                                     .size(Ab((100., 25.)))
                                     .pack(),
@@ -367,7 +367,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                         ..default()
                                     },
                                     UiLayout::window()
-                                        .anchor(Anchor::TopLeft)
+                                        .anchor(Anchor::TOP_LEFT)
                                         .pos(Ab((105., 5.)))
                                         .width(Rl(100.) - Ab(105.))
                                         .height(Ab(25.))
@@ -385,7 +385,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                         crate::ui::components::Depth,
                                         crate::ui::components::Slider,
                                         UiLayout::window()
-                                            .anchor(Anchor::TopLeft)
+                                            .anchor(Anchor::TOP_LEFT)
                                             .pos(Ab((0., 0.)))
                                             .width(
                                                 Ab(
@@ -411,7 +411,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
 
                             ui_camera_intrinsics_panel.spawn((
                                 UiLayout::window()
-                                    .anchor(Anchor::TopLeft)
+                                    .anchor(Anchor::TOP_LEFT)
                                     .pos(Ab((5., 35.)))
                                     .size(Ab((100., 25.)))
                                     .pack(),
@@ -423,7 +423,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                             ui_camera_intrinsics_panel
                                 .spawn(
                                     UiLayout::window()
-                                        .anchor(Anchor::TopLeft)
+                                        .anchor(Anchor::TOP_LEFT)
                                         .pos(Ab((105., 35.)))
                                         .width(Rl(100.) - Ab(100.))
                                         .height(Ab(25.))
@@ -461,7 +461,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                             ..default()
                                         },
                                         UiLayout::window()
-                                            .anchor(Anchor::TopLeft)
+                                            .anchor(Anchor::TOP_LEFT)
                                             .pos(Ab((40., 3.)))
                                             .size(Ab((45.0, 18.0)))
                                             .pack(),
@@ -479,7 +479,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
 
                                     ui_camera_intrinsics_viewport_row.spawn((
                                         UiLayout::window()
-                                            .anchor(Anchor::TopLeft)
+                                            .anchor(Anchor::TOP_LEFT)
                                             .pos(Ab((100., 0.)))
                                             .size(Ab((15.0, 25.0)))
                                             .pack(),
@@ -497,7 +497,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                             ..default()
                                         },
                                         UiLayout::window()
-                                            .anchor(Anchor::TopLeft)
+                                            .anchor(Anchor::TOP_LEFT)
                                             .pos(Ab((130., 3.)))
                                             .size(Ab((45.0, 18.0)))
                                             .pack(),
@@ -516,7 +516,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
 
                             ui_camera_intrinsics_panel.spawn((
                                 UiLayout::window()
-                                    .anchor(Anchor::TopLeft)
+                                    .anchor(Anchor::TOP_LEFT)
                                     .pos(Ab((5., 65.)))
                                     .size(Ab((75., 25.)))
                                     .pack(),
@@ -535,7 +535,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                     ..default()
                                 },
                                 UiLayout::window()
-                                    .anchor(Anchor::TopLeft)
+                                    .anchor(Anchor::TOP_LEFT)
                                     .pos(Ab((105., 65.)))
                                     .size(Ab((55.0, 18.0)))
                                     .pack(),
@@ -563,7 +563,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                             crate::ui::components::Info,
                             crate::ui::components::Container,
                             UiLayout::window()
-                                .anchor(Anchor::TopRight)
+                                .anchor(Anchor::TOP_RIGHT)
                                 .x(Rl(100.) - Ab(5.))
                                 .y(Ab(200.))
                                 .size(Ab((32.0, 32.0)))
@@ -593,7 +593,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                             crate::ui::components::Container,
                             crate::ui::components::Expanded,
                             UiLayout::window()
-                                .anchor(Anchor::TopRight)
+                                .anchor(Anchor::TOP_RIGHT)
                                 .x(Rl(100.) - Ab(5.))
                                 .y(Ab(200.))
                                 .size(Ab((250.0, 512.0)))
@@ -607,7 +607,7 @@ pub(crate) fn setup(mut commands: Commands, asset_server: Res<AssetServer>, pkv:
                                 crate::ui::components::Button,
                                 crate::ui::components::Expanded,
                                 UiLayout::window()
-                                    .anchor(Anchor::TopRight)
+                                    .anchor(Anchor::TOP_RIGHT)
                                     .size(Ab((24., 24.)))
                                     .x(Rl(100.) - Ab(4.))
                                     .y(Ab(4.))
@@ -673,7 +673,7 @@ Performance is going to be slow!
                             crate::ui::components::Info,
                             crate::ui::components::Button,
                             UiLayout::window()
-                                .anchor(Anchor::TopRight)
+                                .anchor(Anchor::TOP_RIGHT)
                                 .x(Rl(100.) - Ab(5.))
                                 .y(Ab(110.))
                                 .size(Ab((32.0, 32.0)))

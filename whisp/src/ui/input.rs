@@ -18,11 +18,11 @@ pub(crate) fn setup_mouse_action(
 ) {
     for (entity, _) in action_query.iter() {
         commands.entity(entity).observe(
-            |trigger: Trigger<Pointer<Pressed>>,
+            |trigger: On<Pointer<Press>>,
              mut ui_state: ResMut<UiState>,
              action_query: Query<(Entity, &mut UiAction)>| {
                 for (entity, mut ui_action) in action_query {
-                    if entity == trigger.target {
+                    if entity == trigger.event().entity {
                         ui_action.is_active = true;
                         ui_state.menu_interaction = true;
                     }
@@ -35,7 +35,7 @@ pub(crate) fn setup_mouse_action(
         .single()
         .expect("Expected FOV Slider bar to be available in UI");
     commands.entity(fov_slider_bar).observe(
-        |_: Trigger<Pointer<Pressed>>,
+        |_: On<Pointer<Press>>,
          mut fov_slider: Query<(
             &mut UiAction,
             &crate::ui::components::Camera,

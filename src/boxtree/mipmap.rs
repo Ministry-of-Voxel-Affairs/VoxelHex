@@ -631,7 +631,11 @@ impl<T: VoxelData> StrategyUpdater<'_, T> {
     /// Sample the MIP of the root node, or its children
     /// * `sectant` - the child to sample, in case `BOX_NODE_CHILDREN_COUNT` the root MIP is sampled
     /// * `position` - the position inside the MIP, expected to be in range `0..self.brick_dim` for all components
-    pub(crate) fn sample_root_mip(&self, sectant: u8, position: &V3c<u32>) -> BoxTreeEntry<T> {
+    pub(crate) fn sample_root_mip(
+        &'_ self,
+        sectant: u8,
+        position: &V3c<u32>,
+    ) -> BoxTreeEntry<'_, T> {
         let tree = &self.0;
         let node_key: usize = if BOX_NODE_CHILDREN_COUNT <= sectant as usize {
             BoxTree::<T>::ROOT_NODE_KEY as usize
