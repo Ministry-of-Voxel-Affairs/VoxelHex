@@ -9,7 +9,7 @@ use bevy::{
 };
 use bevy_lunex::prelude::*;
 use bevy_pkv::PkvStore;
-use voxelhex::raytracing::VhxViewSet;
+use voxelhex::{boxtree::V3c, raytracing::VhxViewSet};
 
 enum ResolutionUpdated {
     OutputWidth,
@@ -703,16 +703,19 @@ pub(crate) fn update(
         ),
         (Without<Width>, Without<Height>, Without<Output>),
     >,
-    loading_panel: Query<(&Dimension, &Model, &Loading, &Slider), With<Container>>,
-    mut loading_panel_bar: Query<
-        (&mut Dimension, &mut Transform, &Model, &Loading, &Slider),
-        Without<Container>,
-    >,
     viewset: Option<ResMut<VhxViewSet>>,
 ) {
     // Handle View reload request
     if let Some(mut viewset) = viewset {
         if let Some(mut view) = viewset.view_mut(0) {
+            if keys.pressed(KeyCode::PageUp) {
+                let updated_direction = view.sun_direction() + V3c::new(0., 0.01, 0.);
+                view.set_sun_direction(updated_direction);
+            }
+            if keys.pressed(KeyCode::PageDown) {
+                let updated_direction = view.sun_direction() - V3c::new(0., 0.01, 0.);
+                view.set_sun_direction(updated_direction);
+            }
             if keys.just_pressed(KeyCode::Tab) {
                 view.reload();
             }
@@ -810,23 +813,5 @@ pub(crate) fn update(
             from: height,
             to: new_height,
         });
-    }
-
-    // Progress bar
-    let (loading_panel_size, _, _, _) = loading_panel
-        .single()
-        .expect("Expected Model Progress panel to be available in UI");
-    let (mut progressbar_size, mut progressbar_transform, _, _, _) = loading_panel_bar
-        .single_mut()
-        .expect("Expected Model Progressbar to be available in UI");
-
-    let progressbar_xtrinsics_fn = |progress: f32, container_size: &Dimension| -> (f32, f32) {
-        let size_x = container_size.x * progress;
-        let transform_x = (size_x - container_size.x) / 2.;
-        (size_x, transform_x)
-    };
-    if keys.just_pressed(KeyCode::Digit0) {
-        (progressbar_size.x, progressbar_transform.translation.x) =
-            progressbar_xtrinsics_fn(0., loading_panel_size);
     }
 }

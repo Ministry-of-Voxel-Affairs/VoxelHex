@@ -172,6 +172,16 @@ pub(crate) fn create_bind_group_layouts(
                 },
                 count: None,
             },
+            BindGroupLayoutEntry {
+                binding: 7u32,
+                visibility: ShaderStages::COMPUTE,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Storage { read_only: false },
+                    has_dynamic_offset: false,
+                    min_binding_size: Some(<Vec<u32> as ShaderType>::min_size()),
+                },
+                count: None,
+            },
         ],
     );
     (
@@ -376,6 +386,7 @@ pub(crate) fn create_tree_bind_group(
     Buffer,
     Buffer,
     Buffer,
+    Buffer,
 ) {
     let render_data = &tree_view.data_handler.render_data;
 
@@ -421,9 +432,10 @@ pub(crate) fn create_tree_bind_group(
 
     let brick_size = (render_data.boxtree_meta.tree_properties & 0x0000FFFF).pow(3) as u64;
     let one_voxel_byte_size = std::mem::size_of::<PaletteIndexValues>() as u64;
+    let voxel_count_in_buffer = brick_size * tree_view.data_handler.bricks_in_view as u64;
     let voxels_buffer = render_device.create_buffer(&BufferDescriptor {
         mapped_at_creation: false,
-        size: one_voxel_byte_size * brick_size * tree_view.data_handler.bricks_in_view as u64,
+        size: one_voxel_byte_size * voxel_count_in_buffer,
         label: Some("BoxTree Voxels Buffer"),
         usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC | BufferUsages::COPY_DST,
     });
@@ -433,6 +445,13 @@ pub(crate) fn create_tree_bind_group(
     let color_palette_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
         label: Some("BoxTree Color Palette Buffer"),
         contents: &buffer.into_inner(),
+        usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC | BufferUsages::COPY_DST,
+    });
+
+    let voxel_cache_buffer = render_device.create_buffer(&BufferDescriptor {
+        mapped_at_creation: false,
+        size: voxel_count_in_buffer as u64, // 1 byte per voxel
+        label: Some("BoxTree Voxel Cache Buffer"),
         usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC | BufferUsages::COPY_DST,
     });
 
@@ -469,6 +488,10 @@ pub(crate) fn create_tree_bind_group(
                     binding: 6,
                     resource: color_palette_buffer.as_entire_binding(),
                 },
+                bevy::render::render_resource::BindGroupEntry {
+                    binding: 7,
+                    resource: voxel_cache_buffer.as_entire_binding(),
+                },
             ],
         ),
         boxtree_meta_buffer,
@@ -478,5 +501,6 @@ pub(crate) fn create_tree_bind_group(
         node_ocbits_buffer,
         voxels_buffer,
         color_palette_buffer,
+        voxel_cache_buffer,
     )
 }

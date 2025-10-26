@@ -194,6 +194,7 @@ fn create_view_resources(
         node_ocbits_buffer,
         voxels_buffer,
         color_palette_buffer,
+        voxel_cache_buffer,
     ) = create_tree_bind_group(pipeline, render_device, tree_view);
 
     BoxTreeRenderDataResources {
@@ -209,6 +210,7 @@ fn create_view_resources(
         node_ocbits_buffer,
         voxels_buffer,
         color_palette_buffer,
+        voxel_cache_buffer,
     }
 }
 

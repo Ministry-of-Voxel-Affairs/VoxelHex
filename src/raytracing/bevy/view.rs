@@ -149,7 +149,7 @@ impl BoxTreeGPUView {
     }
 
     /// Sets the global direction of the sun in the view
-    pub fn set_sun_position(&mut self, direction: V3cf32) {
+    pub fn set_sun_direction(&mut self, direction: V3cf32) {
         self.data_handler.render_data.boxtree_meta.sun_direction = direction.normalized();
         self.data_handler.render_data.sun_changed = true;
     }

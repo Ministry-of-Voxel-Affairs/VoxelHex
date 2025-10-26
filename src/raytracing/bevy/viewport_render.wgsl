@@ -320,12 +320,10 @@ fn probe_brick(
     if(EMPTY_MARKER != brick_descriptor){
         if(0 != (0x80000000 & brick_descriptor)) { // brick is solid
             // Whole brick is solid, ray hits it at first connection
+            // Albedo is in color_palette, it's not a brick index in this case
             return OctreeRayIntersection(
-                !is_empty(brick_descriptor),
-                brick_descriptor, // Albedo is in color_palette, it's not a brick index in this case
-                                  // which is signaled in the first (MSB) bit
-                *ray_current_point,
-                vec3f(0.,1.,0.) // see issue #11
+                !is_empty(brick_descriptor), brick_descriptor,
+                *ray_current_point, vec3f(0.,1.,0.) // see issue #11
             );
         } else { // brick is parted
             let leaf_brick_hit = traverse_brick(
@@ -362,12 +360,10 @@ fn probe_MIP(
     if(node_mips[node_key] != EMPTY_MARKER) { // there is a valid mip present
         if(0 != (node_mips[node_key] & 0x80000000)) { // MIP brick is solid
             // Whole brick is solid, ray hits it at first connection
+            // Albedo is in color_palette, it's not a brick index in this case
             return OctreeRayIntersection(
-                !is_empty(node_mips[node_key]),
-                node_mips[node_key], // Albedo is in color_palette, it's not a brick index in this case
-                                     // which is signaled in the first (MSB) bit
-                ray_current_point,
-                vec3f(0.,1.,0.) // see issue #11
+                !is_empty(node_mips[node_key]), node_mips[node_key],
+                ray_current_point, vec3f(0.,1.,0.) // see issue #11
             );
         } else { // brick is parted
             var brick_point = ray_current_point;
@@ -734,6 +730,15 @@ var<storage, read> voxels: array<PaletteIndexValues>;
 @group(2) @binding(6)
 var<storage, read> color_palette: array<vec4f>;
 
+@group(2) @binding(7) // One byte per voxel ( MSB first )
+///  _===============================================================_
+/// | 1 Byte per voxel                                               |
+/// |================================================================|
+/// | bit 0   | 1 if voxel shadow is processed                       |
+/// |----------------------------------------------------------------|
+/// | bit 1-7 | distance to the sun block (1.0/63.0) increment)      |
+/// `================================================================`
+var<storage, read_write> voxel_cache: array<atomic<u32>>;
 
 @compute @workgroup_size(8, 8, 1)
 fn update(
@@ -761,67 +766,106 @@ fn update(
             depth_texture, vec2u(invocation_id.xy),
             vec4f(length(get_by_ray(&ray, 0., ray_local_index).impact_point - ray.origin))
         );
-    } else
-    if stage_data.stage == VHX_RENDER_STAGE_ID {
-        var rgb_result = vec3f(0.5,1.0,1.0);
+        return;
+    }
 
-        // get relevant pixels in depth
-        let start_distance = min(
-            textureLoad(depth_texture, vec2u(invocation_id.xy / 2)),
+    // stage_data.stage == VHX_RENDER_STAGE_ID
+    // get relevant pixels in depth
+    let start_distance = min(
+        textureLoad(depth_texture, vec2u(invocation_id.xy / 2)),
+        min(
+            textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(0,1)),
             min(
-                textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(0,1)),
-                min(
-                    textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(1,0)),
-                    textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(1,1))
-                )
+                textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(1,0)),
+                textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(1,1))
             )
-        ).r;
+        )
+    ).r;
 
-        /*// +++ DEBUG +++
-        var root_bounds = Cube(vec3(0.,0.,0.), f32(boxtree_meta_data.boxtree_size));
-        let root_intersect = cube_intersect_ray(root_bounds, &ray, 1. / ray.direction);
-        if root_intersect.hit == true {
-            // Display the xyz axes
-            if root_intersect. impact_hit == true {
-                let axes_length = f32(boxtree_meta_data.boxtree_size) / 2.;
-                let axes_width = f32(boxtree_meta_data.boxtree_size) / 50.;
-                let entry_point = (ray.origin + ray.direction * root_intersect.impact_distance);
-                if entry_point.x < axes_length && entry_point.y < axes_width && entry_point.z < axes_width {
-                    rgb_result.r = 1.;
+    var primary_raycast = get_by_ray(&ray, start_distance, ray_local_index);
+    var voxel_descriptor = 0xFFu; // (MSB first) 1 bit: done; 7 bits: shadow value
+    let voxel_bit_offset = ((primary_raycast.voxel_index) % 4u) * 8u;
+    let voxel_cache_index = (primary_raycast.voxel_index) / 4u;
+
+    // Calculate shadows only when there's a hit which is not a solid brick ( see issue #??? )
+    if(primary_raycast.hit && 0 == (primary_raycast.voxel_index & 0x80000000)) {
+        voxel_descriptor = (atomicLoad(&voxel_cache[voxel_cache_index]) >> voxel_bit_offset) & 0xFFu;
+        if 0 == (voxel_descriptor & 0x80u) {
+            loop { // If voxel is not processed yet, try to update flag
+                let expected_old_value = atomicLoad(&voxel_cache[voxel_cache_index]);
+                if 0u != (expected_old_value & (0x80u << voxel_bit_offset)) {
+                    // another thread already set the flag to true
+                    voxel_descriptor |= 0x80u;
+                    break; // don't calculate the shadow this time
                 }
-                if entry_point.x < axes_width && entry_point.y < axes_length && entry_point.z < axes_width {
-                    rgb_result.g = 1.;
+                let exchange_result = atomicCompareExchangeWeak(
+                    &voxel_cache[voxel_cache_index],
+                    expected_old_value, expected_old_value | (0x80u << voxel_bit_offset)
+                );
+                if exchange_result.exchanged {
+                    break;
                 }
-                if entry_point.x < axes_width && entry_point.y < axes_width && entry_point.z < axes_length {
-                    rgb_result.b = 1.;
-                }
+                if 0u != (exchange_result.old_value & (0x80u << voxel_bit_offset)) {
+                    // another thread already set the flag to true
+                    voxel_descriptor |= 0x80u;
+                    break; // don't calculate the shadow this time
+               }
             }
-            rgb_result.b += 0.1; // Also color in the area of the boxtree
         }
-        */// --- DEBUG ---
-        var primary_raycast = get_by_ray(&ray, start_distance, ray_local_index);
+    }
 
-        if(primary_raycast.hit){
-            // shadow ray: cast ray from impact point to lightsource
-            var shadow_ray = Line(primary_raycast.impact_point, boxtree_meta_data.sun_direction);
+    if 0 == (voxel_descriptor & 0x80u) { // cast ray to sun to generate shadow modifier
+        var shadow_ray = Line(primary_raycast.impact_point, boxtree_meta_data.sun_direction);
+        let shadow_raycast = get_by_ray(&shadow_ray, 0.1, ray_local_index); // from inside the voxel to avoid self-intersection
+        voxel_descriptor = 0x80u | (
+            u32(round(select( //TODO: eliminate division
+                clamp(( // the farther away the hit is, the less the hard shadow is going to count
+                    0.3 * length(shadow_raycast.impact_point - primary_raycast.impact_point)
+                    // hard shadows get softer when sunlight block is far away
+                    / (f32(boxtree_meta_data.tree_properties & 0x0000FFFFu) * 4.)
+                ), 0.3, 1.), 1., !shadow_raycast.hit
+            ) * 127.))
+            & 0x7Fu
+        );
 
-            // start shadow raycast from inside the voxel to avoid self-intersection
-            var shadow_raycast = get_by_ray(&shadow_ray, 0.1, ray_local_index);
-            var shadow_modifier = clamp(( // the farther away the hit is, the less the hard shadow is going to count
-                0.3 * length(shadow_raycast.impact_point - primary_raycast.impact_point)
-                / ( // hard shadows get softer when sunlight block is far away
-                    f32(boxtree_meta_data.tree_properties & 0x0000FFFF) * 4.
-                )
-            ), 0.3, 1.);
+        // +++ DEBUG +++
+        shadow_modifier = select(1., 0.2, 0 == u32(round(primary_raycast.impact_point.x + 0.2)) % 4);
+        // --- DEBUG ---
 
-            // If the shadow ray hits something, the point is in shadow
-            rgb_result = select(
-                vec3f(0.),
-                color_palette[voxels[primary_raycast.voxel_index] & 0x0000FFFF].rgb * shadow_modifier,
-                primary_raycast.hit
+        var expected_old_value = atomicLoad(&voxel_cache[voxel_cache_index]);
+        var exchange_value = (
+            (expected_old_value & ~(0x7Fu << voxel_bit_offset))
+            | (voxel_descriptor << voxel_bit_offset)
+        );
+        while(
+            !atomicCompareExchangeWeak(
+                &voxel_cache[voxel_cache_index], expected_old_value, exchange_value
+            ).exchanged
+        ) {
+            expected_old_value = atomicLoad(&voxel_cache[voxel_cache_index]);
+            exchange_value = (
+                (expected_old_value & ~(0x7Fu << voxel_bit_offset))
+                | (voxel_descriptor << voxel_bit_offset)
             );
         }
-
-        textureStore(output_texture, vec2u(invocation_id.xy), vec4f(rgb_result, 1.));
     }
+
+
+    // +++ DEBUG +++
+    }
+
+    textureStore( // Display ray tracing results
+        output_texture, vec2u(invocation_id.xy),
+        select(
+            vec4f(0.5, 1.0, 1.0, 1.0),
+            vec4f(
+                (
+                    color_palette[voxels[primary_raycast.voxel_index & 0x7FFFFFFFu] & 0xFFFFu].rgb
+                    // * f32(voxel_descriptor & 0x7Fu) * 0.007874016 // [0-127] / 127.
+                ),
+                1.
+            ),
+            primary_raycast.hit
+        ),
+    );
 }
