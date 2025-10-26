@@ -3,7 +3,7 @@ members = ["whisp"]
 
 [package]
 name = "voxelhex"
-version = "0.7.0"
+version = "0.7.2"
 edition = "2024"
 authors = ["Dávid Tóth <toth.david.munka@gmail.com>"]
 license = "MIT OR Apache-2.0"

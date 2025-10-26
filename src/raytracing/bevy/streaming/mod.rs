@@ -418,7 +418,7 @@ impl PartialEq for BrickOwnedBy {
     }
 }
 
-/// Continually upload node and brick data to GPU
+/// Continually upload node data, brick data and meta-data to GPU
 pub(crate) fn upload<T: VoxelData>(
     mut commands: Commands,
     mut viewset: Option<ResMut<VhxViewSet>>,
@@ -476,8 +476,10 @@ pub(crate) fn upload<T: VoxelData>(
         );
     }
 
-    // Data updates for BoxTree MIP map feature
-    if view.data_handler.render_data.mips_enabled != tree.mip_map_strategy.is_enabled() {
+    // Data updates for BoxTree MIP map feature and global sun position
+    if view.data_handler.render_data.mips_enabled != tree.mip_map_strategy.is_enabled()
+        || view.data_handler.render_data.sun_changed
+    {
         // Regenerate feature bits
         view.data_handler.render_data.boxtree_meta.tree_properties = boxtree_properties(&tree);
 
@@ -487,11 +489,12 @@ pub(crate) fn upload<T: VoxelData>(
             .write(&view.data_handler.render_data.boxtree_meta)
             .unwrap();
         pipeline.render_queue.write_buffer(
-            &view.resources.as_ref().unwrap().node_metadata_buffer,
+            &view.resources.as_ref().unwrap().boxtree_meta_buffer,
             0,
             &buffer.into_inner(),
         );
-        view.data_handler.render_data.mips_enabled = tree.mip_map_strategy.is_enabled()
+        view.data_handler.render_data.mips_enabled = tree.mip_map_strategy.is_enabled();
+        view.data_handler.render_data.sun_changed = false;
     }
 
     // Data updates for color palette

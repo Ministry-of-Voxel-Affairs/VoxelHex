@@ -710,8 +710,8 @@ fn is_empty(e: PaletteIndexValues) -> bool {
 
 const BOXTREE_ROOT_NODE_KEY = 0u;
 struct BoxtreeMetaData {
-    ambient_light_color: vec3f,
-    ambient_light_position: vec3f,
+    sun_color: vec3f,
+    sun_direction: vec3f,
     boxtree_size: u32,
     tree_properties: u32,
 }
@@ -831,11 +831,7 @@ fn update(
             rgb_result.b += 0.1; // Also color in the area of the boxtree
         }
         */// --- DEBUG ---
-        rgb_result = select(
-            (rgb_result + ray_result.albedo.rgb) * 0.5,
-            (ray_result.albedo.rgb * (dot(ray_result.impact_normal, vec3f(-0.5,0.5,-0.5)) / 2. + 0.5)).rgb,
-            ray_result.hit
-        );
+        rgb_result = select(rgb_result, ray_result.albedo.rgb, ray_result.hit);
 
         textureStore(output_texture, vec2u(invocation_id.xy), vec4f(rgb_result, 1.));
     }
