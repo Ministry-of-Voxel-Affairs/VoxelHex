@@ -197,6 +197,7 @@ pub(crate) struct BoxTreeRenderDataResources {
     /// Only available in GPU, to eliminate needles redundancy
     pub(crate) voxels_buffer: Buffer,
     pub(crate) color_palette_buffer: Buffer,
+    pub(crate) voxel_cache_buffer: Buffer,
     // }--
 }
 

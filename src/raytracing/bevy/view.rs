@@ -81,7 +81,7 @@ impl<T: VoxelData> BoxTreeGPUHost<T> {
                     boxtree_size: tree.boxtree_size,
                     tree_properties: boxtree_properties(tree),
                     sun_color: V3c::new(0.6, 0.6, 0.5),
-                    sun_direction: V3c::new(0., 1., 0.),
+                    sun_direction: V3c::new(1., 0.5, 1.).normalized(),
                 },
                 node_metadata: vec![0; (nodes_in_view as f32 / 16.).ceil() as usize],
                 node_ocbits: vec![0; nodes_in_view * 2],
@@ -149,7 +149,7 @@ impl BoxTreeGPUView {
     }
 
     /// Sets the global direction of the sun in the view
-    pub fn set_sun_position(&mut self, direction: V3cf32) {
+    pub fn set_sun_direction(&mut self, direction: V3cf32) {
         self.data_handler.render_data.boxtree_meta.sun_direction = direction.normalized();
         self.data_handler.render_data.sun_changed = true;
     }

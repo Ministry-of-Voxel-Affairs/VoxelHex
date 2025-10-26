@@ -21,7 +21,7 @@ use bevy::{
     render::{
         render_resource::{
             encase::{internal::WriteInto, UniformBuffer},
-            Buffer, ShaderSize,
+            Buffer, BufferSize, ShaderSize,
         },
         renderer::RenderQueue,
     },
@@ -447,6 +447,21 @@ pub(crate) fn upload<T: VoxelData>(
 
     // Decide target nodes/bricks to upload
     let cache_updates = if view.reload {
+        // {
+        //     // Also reset voxel cache
+        //     let voxel_count_in_buffer =
+        //         tree.brick_dim.pow(3) as u64 * view.data_handler.bricks_in_view as u64;
+        //     let Some(mut voxel_cache_view) = pipeline.render_queue.write_buffer_with(
+        //         &view.resources.as_ref().unwrap().voxel_cache_buffer,
+        //         0,
+        //         BufferSize::new(voxel_count_in_buffer)
+        //             .expect("Expected Voxel brick to have non-zero size!"),
+        //     ) else {
+        //         panic!("Unable to reset voxel Cache during Voxel update")
+        //     };
+        //     voxel_cache_view.iter_mut().for_each(|d| *d = 0);
+        // }
+
         upload_queue::process(&mut commands, tree_host, &mut view, upload_queue_update)
     } else {
         let nodes_to_process = view.data_handler.node_uploads_per_frame;
@@ -493,6 +508,7 @@ pub(crate) fn upload<T: VoxelData>(
             0,
             &buffer.into_inner(),
         );
+
         view.data_handler.render_data.mips_enabled = tree.mip_map_strategy.is_enabled();
         view.data_handler.render_data.sun_changed = false;
     }
@@ -597,7 +613,7 @@ pub(crate) fn upload<T: VoxelData>(
                 continue;
             };
 
-            let voxel_start_index = modified_brick_data.brick_index * brick_data.len();
+            let voxel_start_index = (modified_brick_data.brick_index * brick_data.len()) as u64;
             debug_assert_eq!(
                 brick_data.len(),
                 tree.brick_dim.pow(3) as usize,
@@ -606,10 +622,21 @@ pub(crate) fn upload<T: VoxelData>(
             unsafe {
                 render_queue.write_buffer(
                     &view.resources.as_ref().unwrap().voxels_buffer,
-                    (voxel_start_index * std::mem::size_of_val(&brick_data[0])) as u64,
+                    voxel_start_index * std::mem::size_of_val(&brick_data[0]) as u64,
                     brick_data.align_to::<u8>().1,
                 );
             }
+
+            // Also reset voxel cache
+            // let Some(mut voxel_cache_view) = render_queue.write_buffer_with(
+            //     &view.resources.as_ref().unwrap().voxel_cache_buffer,
+            //     voxel_start_index / 4,
+            //     BufferSize::new(brick_data.len() as u64)
+            //         .expect("Expected Voxel brick to have non-zero size!"),
+            // ) else {
+            //     panic!("Unable to reset voxel Cache during Voxel update")
+            // };
+            // voxel_cache_view.iter_mut().for_each(|d| *d = 0);
         }
     }
 

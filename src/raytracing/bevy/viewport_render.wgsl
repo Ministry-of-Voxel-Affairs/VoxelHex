@@ -300,7 +300,7 @@ fn traverse_brick(
 
 struct OctreeRayIntersection {
     hit: bool,
-    albedo : vec4<f32>,
+    voxel_index: u32,
     impact_point: vec3f,
     impact_normal: vec3f,
 }
@@ -320,37 +320,34 @@ fn probe_brick(
     if(EMPTY_MARKER != brick_descriptor){
         if(0 != (0x80000000 & brick_descriptor)) { // brick is solid
             // Whole brick is solid, ray hits it at first connection
+            // Albedo is in color_palette, it's not a brick index in this case
             return OctreeRayIntersection(
-                !is_empty(brick_descriptor),
-                color_palette[brick_descriptor & 0x0000FFFF], // Albedo is in color_palette, it's not a brick index in this case
-                *ray_current_point,
-                vec3f(0.,1.,0.) // see issue #11
+                !is_empty(brick_descriptor), brick_descriptor,
+                *ray_current_point, vec3f(0.,1.,0.) // see issue #11
             );
         } else { // brick is parted
             let leaf_brick_hit = traverse_brick(
                 ray, ray_current_point,
-                brick_descriptor & 0x0000FFFF,
+                brick_descriptor,
                 brick_bounds, ray_scale_factors,
                 max_distance
             );
 
             if stage_data.stage == VHX_PREPASS_STAGE_ID {
                 if leaf_brick_hit.hit == false && leaf_brick_hit.flat_index != 0 {
-                    return OctreeRayIntersection(true, vec4f(0.), *ray_current_point, vec3f(0., 0., 1.));
+                    return OctreeRayIntersection(true, 0u, *ray_current_point, vec3f(0., 0., 1.));
                 }
             }
 
             if leaf_brick_hit.hit == true {
                 return OctreeRayIntersection(
-                    true,
-                    color_palette[voxels[leaf_brick_hit.flat_index] & 0x0000FFFF],
-                    *ray_current_point,
+                    true, leaf_brick_hit.flat_index, *ray_current_point,
                     vec3f(0.,1.,0.) // see issue #11
                 );
             }
         }
     }
-    return OctreeRayIntersection(false, vec4f(0.), *ray_current_point, vec3f(0., 0., 1.));
+    return OctreeRayIntersection(false, 0u, *ray_current_point, vec3f(0., 0., 1.));
 }
 
 fn probe_MIP(
@@ -363,11 +360,10 @@ fn probe_MIP(
     if(node_mips[node_key] != EMPTY_MARKER) { // there is a valid mip present
         if(0 != (node_mips[node_key] & 0x80000000)) { // MIP brick is solid
             // Whole brick is solid, ray hits it at first connection
+            // Albedo is in color_palette, it's not a brick index in this case
             return OctreeRayIntersection(
-                !is_empty(node_mips[node_key]),
-                color_palette[node_mips[node_key] & 0x0000FFFF], // Albedo is in color_palette, it's not a brick index in this case
-                ray_current_point,
-                vec3f(0.,1.,0.) // see issue #11
+                !is_empty(node_mips[node_key]), node_mips[node_key],
+                ray_current_point, vec3f(0.,1.,0.) // see issue #11
             );
         } else { // brick is parted
             var brick_point = ray_current_point;
@@ -379,15 +375,13 @@ fn probe_MIP(
             );
             if leaf_brick_hit.hit == true {
                 return OctreeRayIntersection(
-                    true,
-                    color_palette[voxels[leaf_brick_hit.flat_index] & 0x0000FFFF],
-                    brick_point,
+                    true, leaf_brick_hit.flat_index, brick_point,
                     vec3f(0.,1.,0.) // see issue #11
                 );
             }
         }
     }
-    return OctreeRayIntersection(false, vec4f(0.), ray_current_point, vec3f(0., 0., 1.));
+    return OctreeRayIntersection(false, 0u, ray_current_point, vec3f(0., 0., 1.));
 }
 
 var<workgroup> root_intersect: array<CubeRayIntersection, 64>; // 8 * 8 for the given workgroup sizes
@@ -446,9 +440,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
         /*// +++ DEBUG +++
         outer_safety += 1;
         if(f32(outer_safety) > boxtree_size * sqrt(3.)) {
-            return OctreeRayIntersection(
-                true, vec4f(1.,0.,0.,1.), vec3f(0.), vec3f(0., 0., 1.)
-            );
+            return OctreeRayIntersection(true, 0u, vec3f(0.), vec3f(0., 0., 1.));
         }
         */// --- DEBUG ---
         // Init with root node: index 0 with meta
@@ -475,14 +467,12 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
             /*// +++ DEBUG +++
             safety += 1;
             if(f32(safety) > boxtree_size * sqrt(30.)) {
-                return OctreeRayIntersection(
-                    true, vec4f(0.,0.,1.,1.), vec3f(0.), vec3f(0., 0., 1.)
-                );
+                return OctreeRayIntersection(true, 0u, vec3f(0.), vec3f(0., 0., 1.));
             }
             */// --- DEBUG ---
             tmp_vec = ray_current_point - (*ray).origin;
             if(stage_data.stage == VHX_PREPASS_STAGE_ID && dot(tmp_vec, tmp_vec) >= max_distance) {
-                return OctreeRayIntersection( false, vec4f(0.), ray_current_point, vec3f(0., 0., 1.) );
+                return OctreeRayIntersection(false, 0u, ray_current_point, vec3f(0., 0., 1.));
             }
 
             target_child_descriptor = node_children[
@@ -533,29 +523,6 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
                     max_distance
                 );
                 if hit.hit == true {
-                    /*// +++ DEBUG +++
-                    let relative_c_point = hit.impact_point - current_bounds.min_position;
-                    if (relative_c_point.x < 5. || relative_c_point.y < 5. || relative_c_point.z < 5.) {
-                        hit.albedo.b = 1.;
-                    }
-
-                    let bound_size_ratio = f32(target_bounds.size) / boxtree_size * 5.;
-                    if( // Display current bounds boundaries
-                        (abs(ray_current_point.x - target_bounds.min_position.x) < bound_size_ratio)
-                        ||(abs(ray_current_point.y - target_bounds.min_position.y) < bound_size_ratio)
-                        ||(abs(ray_current_point.z - target_bounds.min_position.z) < bound_size_ratio)
-                    ){
-                        hit.albedo -= 0.5;
-                    }
-
-                    if( // Display current bounds center
-                        (abs(ray_current_point.x - (current_bounds.min_position.x + (current_bounds.size / 2.))) < bound_size_ratio)
-                        ||(abs(ray_current_point.y - (current_bounds.min_position.y + (current_bounds.size / 2.))) < bound_size_ratio)
-                        ||(abs(ray_current_point.z - (current_bounds.min_position.z + (current_bounds.size / 2.))) < bound_size_ratio)
-                    ){
-                        hit.albedo += 0.5;
-                    }
-                    */// --- DEBUG ---
                     return hit;
                 }
             }
@@ -574,7 +541,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
                     stage_data.stage == VHX_PREPASS_STAGE_ID
                     && dot(ray_current_point - (*ray).origin, ray_current_point - (*ray).origin) >= max_distance
                 ) {
-                    return OctreeRayIntersection( false, vec4f(0.), ray_point_before_pop, vec3f(0., 0., 1.) );
+                    return OctreeRayIntersection(false, 0u, ray_point_before_pop, vec3f(0., 0., 1.));
                 }
                 target_sectant_center = fma(
                     tmp_vec, vec3f(target_bounds.size),
@@ -635,9 +602,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
                     /*// +++ DEBUG +++
                     advance_safety += 1;
                     if(advance_safety > 16) {
-                        return OctreeRayIntersection(
-                            true, vec4f(0.,1.,0.,1.), vec3f(0.), vec3f(0., 0., 1.)
-                        );
+                        return OctreeRayIntersection(true, 0u, vec3f(0.), vec3f(0., 0., 1.));
                     }
                     */// --- DEBUG ---
                     tmp_vec = round(dda_step_to_next_sibling((*ray).direction, &ray_current_point, &target_bounds, ray_scale_factors));
@@ -691,7 +656,7 @@ fn get_by_ray(ray: ptr<function, Line>, start_distance: f32, local_index: u32) -
             && all(ray_current_point > vec3f(0.))
         );
     } // while (ray inside root bounds)
-    return OctreeRayIntersection(false, vec4f(0.), ray_current_point, vec3f(0., 0., 1.));
+    return OctreeRayIntersection(false, 0u, ray_current_point, vec3f(0., 0., 1.));
 }
 
 alias PaletteIndexValues = u32;
@@ -765,6 +730,15 @@ var<storage, read> voxels: array<PaletteIndexValues>;
 @group(2) @binding(6)
 var<storage, read> color_palette: array<vec4f>;
 
+@group(2) @binding(7) // One byte per voxel ( MSB first )
+///  _===============================================================_
+/// | 1 Byte per voxel                                               |
+/// |================================================================|
+/// | bit 0   | 1 if voxel shadow is processed                       |
+/// |----------------------------------------------------------------|
+/// | bit 1-7 | distance to the sun block (1.0/63.0) increment)      |
+/// `================================================================`
+var<storage, read_write> voxel_cache: array<atomic<u32>>;
 
 @compute @workgroup_size(8, 8, 1)
 fn update(
@@ -792,47 +766,106 @@ fn update(
             depth_texture, vec2u(invocation_id.xy),
             vec4f(length(get_by_ray(&ray, 0., ray_local_index).impact_point - ray.origin))
         );
-    } else
-    if stage_data.stage == VHX_RENDER_STAGE_ID {
-        var rgb_result = vec3f(0.5,1.0,1.0);
-
-        // get relevant pixels in depth
-        let start_distance = min(
-            textureLoad(depth_texture, vec2u(invocation_id.xy / 2)),
-            min(
-                textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(0,1)),
-                min(
-                    textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(1,0)),
-                    textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(1,1))
-                )
-            )
-        ).r;
-
-        var ray_result = get_by_ray(&ray, start_distance, ray_local_index);
-        /*// +++ DEBUG +++
-        var root_bounds = Cube(vec3(0.,0.,0.), f32(boxtree_meta_data.boxtree_size));
-        let root_intersect = cube_intersect_ray(root_bounds, &ray, 1. / ray.direction);
-        if root_intersect.hit == true {
-            // Display the xyz axes
-            if root_intersect. impact_hit == true {
-                let axes_length = f32(boxtree_meta_data.boxtree_size) / 2.;
-                let axes_width = f32(boxtree_meta_data.boxtree_size) / 50.;
-                let entry_point = (ray.origin + ray.direction * root_intersect.impact_distance);
-                if entry_point.x < axes_length && entry_point.y < axes_width && entry_point.z < axes_width {
-                    rgb_result.r = 1.;
-                }
-                if entry_point.x < axes_width && entry_point.y < axes_length && entry_point.z < axes_width {
-                    rgb_result.g = 1.;
-                }
-                if entry_point.x < axes_width && entry_point.y < axes_width && entry_point.z < axes_length {
-                    rgb_result.b = 1.;
-                }
-            }
-            rgb_result.b += 0.1; // Also color in the area of the boxtree
-        }
-        */// --- DEBUG ---
-        rgb_result = select(rgb_result, ray_result.albedo.rgb, ray_result.hit);
-
-        textureStore(output_texture, vec2u(invocation_id.xy), vec4f(rgb_result, 1.));
+        return;
     }
+
+    // stage_data.stage == VHX_RENDER_STAGE_ID
+    // get relevant pixels in depth
+    let start_distance = min(
+        textureLoad(depth_texture, vec2u(invocation_id.xy / 2)),
+        min(
+            textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(0,1)),
+            min(
+                textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(1,0)),
+                textureLoad(depth_texture, vec2u(invocation_id.xy / 2) + vec2u(1,1))
+            )
+        )
+    ).r;
+
+    var primary_raycast = get_by_ray(&ray, start_distance, ray_local_index);
+    var voxel_descriptor = 0xFFu; // (MSB first) 1 bit: done; 7 bits: shadow value
+    let voxel_bit_offset = ((primary_raycast.voxel_index) % 4u) * 8u;
+    let voxel_cache_index = (primary_raycast.voxel_index) / 4u;
+
+    // Calculate shadows only when there's a hit which is not a solid brick ( see issue #??? )
+    if(primary_raycast.hit && 0 == (primary_raycast.voxel_index & 0x80000000)) {
+        voxel_descriptor = (atomicLoad(&voxel_cache[voxel_cache_index]) >> voxel_bit_offset) & 0xFFu;
+        if 0 == (voxel_descriptor & 0x80u) {
+            loop { // If voxel is not processed yet, try to update flag
+                let expected_old_value = atomicLoad(&voxel_cache[voxel_cache_index]);
+                if 0u != (expected_old_value & (0x80u << voxel_bit_offset)) {
+                    // another thread already set the flag to true
+                    voxel_descriptor |= 0x80u;
+                    break; // don't calculate the shadow this time
+                }
+                let exchange_result = atomicCompareExchangeWeak(
+                    &voxel_cache[voxel_cache_index],
+                    expected_old_value, expected_old_value | (0x80u << voxel_bit_offset)
+                );
+                if exchange_result.exchanged {
+                    break;
+                }
+                if 0u != (exchange_result.old_value & (0x80u << voxel_bit_offset)) {
+                    // another thread already set the flag to true
+                    voxel_descriptor |= 0x80u;
+                    break; // don't calculate the shadow this time
+               }
+            }
+        }
+    }
+
+    if 0 == (voxel_descriptor & 0x80u) { // cast ray to sun to generate shadow modifier
+        var shadow_ray = Line(primary_raycast.impact_point, boxtree_meta_data.sun_direction);
+        let shadow_raycast = get_by_ray(&shadow_ray, 0.1, ray_local_index); // from inside the voxel to avoid self-intersection
+        voxel_descriptor = 0x80u | (
+            u32(round(select( //TODO: eliminate division
+                clamp(( // the farther away the hit is, the less the hard shadow is going to count
+                    0.3 * length(shadow_raycast.impact_point - primary_raycast.impact_point)
+                    // hard shadows get softer when sunlight block is far away
+                    / (f32(boxtree_meta_data.tree_properties & 0x0000FFFFu) * 4.)
+                ), 0.3, 1.), 1., !shadow_raycast.hit
+            ) * 127.))
+            & 0x7Fu
+        );
+
+        // +++ DEBUG +++
+        shadow_modifier = select(1., 0.2, 0 == u32(round(primary_raycast.impact_point.x + 0.2)) % 4);
+        // --- DEBUG ---
+
+        var expected_old_value = atomicLoad(&voxel_cache[voxel_cache_index]);
+        var exchange_value = (
+            (expected_old_value & ~(0x7Fu << voxel_bit_offset))
+            | (voxel_descriptor << voxel_bit_offset)
+        );
+        while(
+            !atomicCompareExchangeWeak(
+                &voxel_cache[voxel_cache_index], expected_old_value, exchange_value
+            ).exchanged
+        ) {
+            expected_old_value = atomicLoad(&voxel_cache[voxel_cache_index]);
+            exchange_value = (
+                (expected_old_value & ~(0x7Fu << voxel_bit_offset))
+                | (voxel_descriptor << voxel_bit_offset)
+            );
+        }
+    }
+
+
+    // +++ DEBUG +++
+    }
+
+    textureStore( // Display ray tracing results
+        output_texture, vec2u(invocation_id.xy),
+        select(
+            vec4f(0.5, 1.0, 1.0, 1.0),
+            vec4f(
+                (
+                    color_palette[voxels[primary_raycast.voxel_index & 0x7FFFFFFFu] & 0xFFFFu].rgb
+                    // * f32(voxel_descriptor & 0x7Fu) * 0.007874016 // [0-127] / 127.
+                ),
+                1.
+            ),
+            primary_raycast.hit
+        ),
+    );
 }
